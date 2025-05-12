@@ -98,8 +98,7 @@ impl Settings {
 mod test {
 
     use crate::collecter::{
-        settings::Settings as SharedSettings,
-        observations::settings::Settings,
+        observations::settings::Settings, settings::Settings as SharedSettings,
     };
 
     use hifitime::prelude::{Duration, Epoch, TimeScale};
@@ -108,7 +107,6 @@ mod test {
 
     #[test]
     fn test_v2_filename() {
-
         let mut shared = SharedSettings::default();
         shared.long_filename = false;
         shared.snapshot_period = Duration::from_days(1.0);
@@ -132,7 +130,6 @@ mod test {
 
     #[test]
     fn test_v3_filename() {
-
         let mut shared = SharedSettings::default();
 
         shared.major = 3;

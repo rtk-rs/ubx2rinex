@@ -21,8 +21,7 @@ pub struct Cli {
 impl Cli {
     /// Build new command line interface
     pub fn new() -> Self {
-        let cmd = 
-            
+        let cmd =
             Command::new("ubx2rinex")
         .author("Guillaume W. Bres, <guillaume.bressaix@gmail.com>")
         .version(env!("CARGO_PKG_VERSION"))
@@ -220,11 +219,13 @@ Requires country code and other definitions to be complete.")
                 .help("Disable Observation RINEX collection. 
 Use this if you intend to collect Ephemeris only."),
         );
-        
-        let cmd = cmd.next_help_heading("Observables (physics - required for Observation collection)")
+
+        let cmd = cmd
+            .next_help_heading("Observables (physics - required for Observation collection)")
             .args(OBSERVABLES_ARGS.iter());
 
-        let cmd = cmd.next_help_heading("Observations RINEX (specific)")
+        let cmd = cmd
+            .next_help_heading("Observations RINEX (specific)")
             .args(OBSERVATION_ARGS.iter());
 
         Self {
@@ -500,7 +501,8 @@ Use this if you intend to collect Ephemeris only."),
             } else {
                 3
             },
-            snapshot_period: if let Some(period) = self.matches.get_one::<String>("snapshot-period") {
+            snapshot_period: if let Some(period) = self.matches.get_one::<String>("snapshot-period")
+            {
                 let dt = period
                     .trim()
                     .parse::<Duration>()

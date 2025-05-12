@@ -123,7 +123,6 @@ pub async fn main() {
     });
 
     loop {
-
         let _ = ublox.consume_all_cb(&mut buffer, |packet| {
             match packet {
                 PacketRef::MonHw(_) => {
@@ -295,7 +294,6 @@ pub async fn main() {
                         );
                     }
                 },
-
 
                 PacketRef::InfTest(pkt) => {
                     if let Some(msg) = pkt.message() {

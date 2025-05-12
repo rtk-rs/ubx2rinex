@@ -1,8 +1,4 @@
-use rinex::prelude::{
-    SV,
-    Epoch,
-    Carrier,
-};
+use rinex::prelude::{Carrier, Epoch, SV};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Rawxm {

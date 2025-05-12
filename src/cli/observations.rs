@@ -7,7 +7,9 @@ lazy_static! {
             .long("all-meas")
             .action(ArgAction::SetTrue)
             .required_unless_present_any(["no-obs", "cp", "pr", "dop"])
-            .help("Activate all measurements (cp, pr, doppler, cno) at once (at least one required)."),
+            .help(
+                "Activate all measurements (cp, pr, doppler, cno) at once (at least one required)."
+            ),
         Arg::new("cp")
             .long("cp")
             .action(ArgAction::SetTrue)
@@ -27,7 +29,7 @@ lazy_static! {
 }
 
 lazy_static! {
-    pub static ref OBSERVATION_ARGS : Vec<Arg> = vec![
+    pub static ref OBSERVATION_ARGS: Vec<Arg> = vec![
         Arg::new("sampling")
             .short('s')
             .long("sampling")
@@ -36,8 +38,10 @@ lazy_static! {
         Arg::new("timescale")
             .long("timescale")
             .required(false)
-            .help("Timescale to express Observations. Default is GPST. 
-Any value is supported here, but GNSS timescales are expected by RINEX standards."),
+            .help(
+                "Timescale to express Observations. Default is GPST. 
+Any value is supported here, but GNSS timescales are expected by RINEX standards."
+            ),
         Arg::new("crx")
             .long("crx")
             .action(ArgAction::SetTrue)

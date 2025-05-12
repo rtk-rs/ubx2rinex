@@ -21,7 +21,7 @@ pub struct Settings {
     pub solutions_ratio: u16,
     /// Active [Constellation]s
     pub constellations: Vec<Constellation>,
-    
+
     /// Serial number
     pub sn: Option<String>,
 

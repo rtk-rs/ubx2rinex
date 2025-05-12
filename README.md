@@ -55,6 +55,23 @@ cargo build -r
 The application uses the latest `UBX` protocol supported. This may unlock full potential
 of modern devices, and does not cause issues with older firmwares, simply restricted applications.
 
+Application logs
+================
+
+`ubx2rinex` uses the Rust logger for tracing events in real-time and not disturb the collection process.  
+To activate the application logs, simply define the `$RUST_LOG` variable:
+
+```bash
+export RUST_LOG=info
+```
+
+Several sensitivity options exist:
+
+- info
+- error
+- debug
+- trace
+
 RINEX Files collection
 ======================
 
@@ -203,6 +220,89 @@ RUST_LOG=debug ubx2rinex \
 [..] in parallel, after 1 min with those settings (at least 2x 30s captures)
 ```
 
+Observations Timescale
+======================
+
+The clock state and all observations are expressed in a single Timescale, as per the
+RINEX standards. Yet you can select it with `--timescale`. The default being GPST,
+all previous examples expressed measurements in GPST and produced RINEX files referenced to GPST.
+
+:wanring: The RINEX standards specifies that the timescale should be GNSS, but this toolbox
+allows you to select any of the supported timescales. So it is technically possible
+to generate a UTC RINEX, which does not follow the standards. Other tools of our toolbox can work
+around it and still accept it, for the same reasons. But it is unlikely that other toolboxes will,
+so you have to be careful.
+
+:warning: The timescale settings does not follow the constellation settings! 
+Let's say you're only interested in BDS measurements, our default timescale is still GPST
+(which is the most common case!). You can then specify to express your BDS measurements in BDT with the following:
+
+```C
+RUST_LOG=debug ubx2rinex \
+    -p /dev/ttyACM0 \
+    -b 115200 \
+    --bds \
+    --l1 \
+    --all-meas \
+    --rx-clock \
+    --timescale BDT \
+    -m "M8T u-Blox"
+```
+
+Note that the rest of our framework understands timescale correctly, in particular, it is possible to
+post-process any measurements correctly, whether it is for QC analysis or post processed navigation.
+
+Sampling period
+===============
+
+The default sampling period is `30s` for standardized "low-rate" observation RINEX files.  
+You can modify that with `-s, --sampling`. In this example, we "upgrade" to higher rate (01S) RINEX:
+
+```C
+ubx2rinex -p /dev/ttyACM0 \
+          --gps \
+          --l1 \
+          --all-meas \
+          -s "1 s"
+```
+
+Note that U-Blox is limited to 50ms.
+
+Snapshot period
+===============
+
+The snapshot period defines how often we release a RINEX of each kind.
+When the snapshot is being released, the file handled is released and the file is ready to be distributed or post processed.
+
+By default, the snapshot period is set to Daily, which is compatible with standard RINEX publications.  
+
+Several options exist (you can only select one at once):
+
+- `--hourly` for Hourly RINEX publication
+- `--quarterly` for one publication every 6 hours
+- `--noon` for one publication every 12 hours
+- `--custom $dt` for custom publication period. Every valid `Duration` description may apply. For example, these are all valid durations: `--period  
+
+NB: 
+
+- the first signal observation is released everyday at midnight 00:00:00 in the main Timescale
+- the last signal observation is released everyday at 23:59:30 in the main Timescale
+
+File rotation and descriptors
+=============================
+
+`ubx2rinex` owns the File descriptor with write access (only) until the end of this period.  
+That means you can only read the file until the end of the period.
+Deleting the file descriptor while the program is actively collecting will the program to panic.
+
+At the end of each period, the file descriptor is released and you can fully process it.   
+The file pointer is then incremented, using standard naming conventions.
+
+`ubx2rinex` will provide content "as soon as" it exists (+/- some file descriptor access, that we
+try to keep efficient). This means that exploitation of this program is compatible with real-time
+watching of the file being produced and each new symbol is published fairly quickly.
+
+
 ## :warning: M8 Series usage
 
 :warning: Until further notice :warning:
@@ -220,22 +320,6 @@ ubx2rinex -p /dev/ttyUSB1 --gps --glonass --l1
 
 Any other constellation flags has no effect. Selecting other signals has no effect.
 Removing L1 signal would create invalid RINEX.
-
-## Application logs
-
-`ubx2rinex` uses the Rust logger for tracing events in real-time and not disturb the collection process.  
-To activate the application logs, simply define the `$RUST_LOG` variable:
-
-```bash
-export RUST_LOG=info
-```
-
-Several sensitivity options exist:
-
-- info
-- error
-- debug
-- trace
 
 U-Blox configuration
 ====================
@@ -294,69 +378,6 @@ use the `--no-obs` flag, which will disable this mode:
 [2025-02-25T20:30:12Z DEBUG ubx2rinex] NAV CLK: NavClock { itow: 246630000, clk_b: 628984, clk_d: 187, t_acc: 50, f_acc: 736 }
 [...]
 ```
-
-## Observation RINEX Timescale
-
-:warning: Observation RINEX express timestamps and clock states in a specific [GNSS Timescale](https://github.com/rtk-rs/gnss),
-not UTC. 
-
-`ubx2rinex` is smart, it will adapt the main Timescale to [your Constellation choices](#Constellation).
-
-Receiver clock state collection
-===============================
-
-Observation RINEX allows describing the receiver clock state with 14 digits precision.  
-This is optional and disabled by default. If you are interested in capturing and distributing your local
-clock state, you should turn activate this option with `--rx-clock`.
-
-Sampling period
-===============
-
-When collecting signal observations, it is important to define your sampling period. The default sampling period is set to 30s, which is compatible with standard Observation RINEX publications.
-
-You can use any custom value above 50ms. 
-
-In this example, we reduce the sampling period to 1s:
-
-```bash
-ubx2rinex -p /dev/ttyACM0 \
-          --gps \
-          -s "1 s"
-```
-
-Snapshot period
-===============
-
-The snapshot period defines how often we release a RINEX of each kind.
-When the snapshot is being released, the file handled is released and the file is ready to be distributed or post processed.
-
-By default, the snapshot period is set to Daily, which is compatible with standard RINEX publications.  
-
-Several options exist (you can only select one at once):
-
-- `--hourly` for Hourly RINEX publication
-- `--quarterly` for one publication every 6 hours
-- `--noon` for one publication every 12 hours
-- `--custom $dt` for custom publication period. Every valid `Duration` description may apply. For example, these are all valid durations: `--period  
-
-NB: 
-
-- the first signal observation is released everyday at midnight 00:00:00 in the main Timescale
-- the last signal observation is released everyday at 23:59:30 in the main Timescale
-
-File rotation and descriptors
-=============================
-
-`ubx2rinex` owns the File descriptor with write access (only) until the end of this period.  
-That means you can only read the file until the end of the period.
-Deleting the file descriptor while the program is actively collecting will the program to panic.
-
-At the end of each period, the file descriptor is released and you can fully process it.   
-The file pointer is then incremented, using standard naming conventions.
-
-`ubx2rinex` will provide content "as soon as" it exists (+/- some file descriptor access, that we
-try to keep efficient). This means that exploitation of this program is compatible with real-time
-watching of the file being produced and each new symbol is published fairly quickly.
 
 Program interruption and release
 ================================
