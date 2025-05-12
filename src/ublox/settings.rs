@@ -21,12 +21,16 @@ pub struct Settings {
     pub solutions_ratio: u16,
     /// Active [Constellation]s
     pub constellations: Vec<Constellation>,
+    
     /// Serial number
     pub sn: Option<String>,
+
     /// RX-clock enabled
     pub rx_clock: bool,
+
     /// RX model
     pub model: Option<String>,
+
     /// Firmware version
     pub firmware: Option<String>,
 }

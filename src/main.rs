@@ -14,7 +14,7 @@
  */
 
 extern crate gnss_rs as gnss;
-extern crate ublox;
+extern crate ublox as ublox_lib;
 
 use std::str::FromStr;
 
@@ -27,24 +27,19 @@ use tokio::{
     sync::{mpsc, watch},
 };
 
-use rinex::prelude::{Constellation, Duration, Epoch, Observable, TimeScale, SV};
+use rinex::prelude::{Carrier, Constellation, Duration, Epoch, Observable, TimeScale, SV};
 
-use ublox::{NavStatusFlags, NavStatusFlags2, NavTimeUtcFlags, PacketRef, RecStatFlags};
+use ublox_lib::{NavStatusFlags, NavStatusFlags2, NavTimeUtcFlags, PacketRef, RecStatFlags};
 
 mod cli;
 mod collecter;
-mod device;
-mod ubx;
+mod ublox;
 mod utils;
 
 use crate::{
     cli::Cli,
-    collecter::{
-        ephemeris::EphemerisBuilder, navigation::Collecter as NavCollecter,
-        observation::Collecter as ObsCollecter, rawxm::Rawxm, Message,
-    },
-    device::Device,
-    ubx::Settings as UbloxSettings,
+    collecter::{observations::rawxm::Rawxm, Collector, Message},
+    ublox::{Settings as UbloxSettings, Ublox},
     utils::to_constellation,
 };
 
@@ -62,8 +57,12 @@ pub async fn main() {
     // cli
     let cli = Cli::new();
 
-    // RINEX settings
-    let settings = cli.rinex_settings();
+    // Settings
+    let port = cli.port();
+    let baud_rate = cli.baud_rate().unwrap_or(115_200);
+    let shared_settings = cli.settings();
+    let obs_settings = cli.obs_settings();
+    let mut ubx_settings = cli.ublox_settings();
 
     // init
     let mut buffer = [0; 8192];
@@ -71,12 +70,6 @@ pub async fn main() {
 
     let mut fix_flags = NavStatusFlags::empty(); // current fix flag
     let mut nav_status = NavStatusFlags2::Inactive;
-
-    // UBlox settings
-    let port = cli.port();
-    let baud_rate = cli.baud_rate().unwrap_or(115_200);
-
-    let mut ubx_settings = cli.ublox_settings();
 
     let timescale = ubx_settings.timescale;
 
@@ -107,43 +100,17 @@ pub async fn main() {
     // Tokio
     let (shutdown_tx, shutdown_rx) = watch::channel(true);
 
-    // Observation RINEX
-    let (obs_tx, obs_rx) = mpsc::channel(32);
-    let mut obs_collecter = ObsCollecter::new(
-        settings.clone(),
-        ubx_settings.clone(),
-        shutdown_rx.clone(),
-        obs_rx,
-    );
+    let (tx, rx) = crossbeam_channel::bounded(16);
 
-    // Navigation RINEX
-    let (nav_tx, nav_rx) = mpsc::channel(32);
-    let mut nav_collecter = NavCollecter::new(
-        t_utc,
-        settings.clone(),
-        ubx_settings.clone(),
-        shutdown_rx.clone(),
-        nav_rx,
-    );
+    let mut collecter = Collector::new(shared_settings, obs_settings.clone(), rx);
 
-    // Open device
-    let mut device = Device::open(port, baud_rate, &mut buffer);
+    let mut ublox = Ublox::open(port, baud_rate, &mut buffer);
 
-    device.configure(&ubx_settings, &mut buffer, obs_tx.clone());
+    ublox.configure(&ubx_settings, &mut buffer);
 
-    if ubx_settings.rawxm {
-        tokio::spawn(async move {
-            debug!("{} - Observation mode deployed", t_utc);
-            obs_collecter.run().await;
-        });
-    }
-
-    if ubx_settings.ephemeris {
-        tokio::spawn(async move {
-            debug!("{} - Navigation  mode deployed", t_utc);
-            nav_collecter.run().await;
-        });
-    }
+    tokio::spawn(async move {
+        collecter.run().await;
+    });
 
     tokio::spawn(async move {
         signal::ctrl_c()
@@ -156,12 +123,17 @@ pub async fn main() {
     });
 
     loop {
-        let _ = device.consume_all_cb(&mut buffer, |packet| {
+
+        let _ = ublox.consume_all_cb(&mut buffer, |packet| {
             match packet {
+                PacketRef::MonHw(_) => {
+                    // TODO
+                },
                 PacketRef::CfgNav5(pkt) => {
                     // Dynamic model
                     let _dyn_model = pkt.dyn_model();
                 },
+
                 PacketRef::RxmRawx(pkt) => {
                     let gpst_tow_nanos = (pkt.rcv_tow() * 1.0E9).round() as u64;
                     t_gpst = Epoch::from_time_of_week(pkt.week() as u32, gpst_tow_nanos, timescale);
@@ -174,39 +146,47 @@ pub async fn main() {
                     }
 
                     for meas in pkt.measurements() {
-                        let pr = meas.pr_mes();
-                        let _pr_stddev = meas.pr_stdev();
+                        let (pr, cp, dop, cno) =
+                            (meas.pr_mes(), meas.cp_mes(), meas.do_mes(), meas.cno());
 
-                        let cp = meas.cp_mes();
-                        let _cp_stddev = meas.cp_stdev();
-
-                        let dop = meas.do_mes();
-                        let _dop_stddev = meas.do_stdev();
-
-                        // let freq_id = meas.freq_id();
                         let gnss_id = meas.gnss_id();
-                        let cno = meas.cno();
-
                         let constell = to_constellation(gnss_id);
+
                         if constell.is_none() {
                             debug!("unknown constellation: #{}", gnss_id);
                             continue;
                         }
 
                         let constell = constell.unwrap();
+                        let sv = SV::new(constell, meas.sv_id());
 
-                        let prn = meas.sv_id();
-                        let sv = SV::new(constell, prn);
-
-                        let t = if settings.timescale == TimeScale::GPST {
+                        let t = if obs_settings.timescale == TimeScale::GPST {
                             t_gpst
                         } else {
-                            t_gpst.to_time_scale(settings.timescale)
+                            t_gpst.to_time_scale(obs_settings.timescale)
                         };
 
-                        let rawxm = Rawxm::new(t, sv, pr, cp, dop, cno);
+                        trace!(
+                            "{}({}) pr={} cp={} dop={} freq_id={}",
+                            t,
+                            sv,
+                            pr,
+                            cp,
+                            dop,
+                            meas.freq_id()
+                        );
 
-                        match obs_tx.try_send(Message::Measurement(rawxm)) {
+                        let rawxm = Rawxm {
+                            t,
+                            sv,
+                            pr,
+                            cp,
+                            dop,
+                            cno,
+                            carrier: Carrier::L1, //TODO
+                        };
+
+                        match tx.send(Message::Rawxm(rawxm)) {
                             Ok(_) => {
                                 debug!("{}", rawxm);
                             },
@@ -216,7 +196,19 @@ pub async fn main() {
                         }
                     }
                 },
-                PacketRef::MonHw(pkt) => {},
+
+                PacketRef::NavClock(pkt) => {
+                    let clock = pkt.clk_bias();
+                    match tx.try_send(Message::Clock(clock)) {
+                        Ok(_) => {
+                            debug!("{}", clock);
+                        },
+                        Err(e) => {
+                            error!("missed clock state: {}", e);
+                        },
+                    }
+                },
+
                 PacketRef::NavSat(pkt) => {
                     for sv in pkt.svs() {
                         let constellation = to_constellation(sv.gnss_id());
@@ -244,6 +236,7 @@ pub async fn main() {
                         //flags.ephemeris_available();
                     }
                 },
+
                 PacketRef::NavTimeUTC(pkt) => {
                     if pkt.valid().intersects(NavTimeUtcFlags::VALID_UTC) {
                         // leap seconds already known
@@ -259,6 +252,7 @@ pub async fn main() {
                         );
                     }
                 },
+
                 PacketRef::NavStatus(pkt) => {
                     pkt.itow();
                     //itow = pkt.itow();
@@ -271,6 +265,7 @@ pub async fn main() {
                     );
                     trace!("Uptime: {}", uptime);
                 },
+
                 PacketRef::NavEoe(pkt) => {
                     let nav_gpst_itow_nanos = pkt.itow() as u64 * 1_000_000;
 
@@ -281,10 +276,10 @@ pub async fn main() {
                     );
 
                     end_of_nav_epoch = true;
-
                     debug!("{} - End of Epoch", nav_gpst);
-                    let _ = nav_tx.try_send(Message::EndofEpoch(nav_gpst));
+                    // let _ = nav_tx.try_send(Message::EndofEpoch(nav_gpst));
                 },
+
                 PacketRef::NavPvt(pkt) => {
                     let (y, m, d) = (pkt.year() as i32, pkt.month(), pkt.day());
                     let (hh, mm, ss) = (pkt.hour(), pkt.min(), pkt.sec());
@@ -300,49 +295,8 @@ pub async fn main() {
                         );
                     }
                 },
-                PacketRef::MgaGpsEph(pkt) => {
-                    debug!("{:?}", pkt);
-                    let sv = SV::new(Constellation::GPS, pkt.sv_id());
-                    let eph = EphemerisBuilder::from_gps(pkt);
 
-                    match nav_tx.try_send(Message::Ephemeris((t_gpst, sv, eph))) {
-                        Ok(_) => {},
-                        Err(e) => {
-                            error!("missed GPS ephemeris: {}", e);
-                        },
-                    }
-                },
-                PacketRef::MgaGloEph(pkt) => {
-                    debug!("{:?}", pkt);
-                    let sv = SV::new(Constellation::GPS, pkt.sv_id());
-                    let eph = EphemerisBuilder::from_glonass(pkt);
 
-                    match nav_tx.try_send(Message::Ephemeris((t_utc, sv, eph))) {
-                        Ok(_) => {},
-                        Err(e) => {
-                            error!("missed Glonass ephemeris: {}", e);
-                        },
-                    }
-                },
-                PacketRef::MgaGpsIono(pkt) => {
-                    // let kbmodel = KbModel {
-                    //     alpha: (pkt.alpha0(), pkt.alpha1(), pkt.alpha2(), pkt.alpha3()),
-                    //     beta: (pkt.beta0(), pkt.beta1(), pkt.beta2(), pkt.beta3()),
-                    //     region: KbRegionCode::default(), // TODO,
-                    // };
-                    // let _iono = IonMessage::KlobucharModel(kbmodel);
-                },
-                PacketRef::NavClock(pkt) => {
-                    let clock = pkt.clk_bias();
-                    match obs_tx.try_send(Message::Clock(clock)) {
-                        Ok(_) => {
-                            debug!("{}", clock);
-                        },
-                        Err(e) => {
-                            error!("missed clock state: {}", e);
-                        },
-                    }
-                },
                 PacketRef::InfTest(pkt) => {
                     if let Some(msg) = pkt.message() {
                         trace!("{}", msg);
@@ -371,20 +325,5 @@ pub async fn main() {
                 _ => {},
             }
         });
-
-        if end_of_nav_epoch {
-            if ubx_settings.constellations.contains(&Constellation::GPS) {
-                device.request_mga_gps_eph();
-            }
-
-            if ubx_settings
-                .constellations
-                .contains(&Constellation::Glonass)
-            {
-                device.request_mga_glonass_eph();
-            }
-
-            end_of_nav_epoch = false;
-        }
     } // loop
 }

@@ -14,8 +14,8 @@ use rinex::{
 use tokio::{sync::mpsc::Receiver as Rx, sync::watch::Receiver as WatchRx};
 
 use crate::{
-    collecter::{fd::FileDescriptor, settings::Settings, Message},
-    UbloxSettings,
+    collecter::{brdc::Settings as BrdcSettings, fd::FileDescriptor, settings::Settings, Message},
+    ublox::Settings as UbloxSettings,
 };
 
 pub struct Collecter {

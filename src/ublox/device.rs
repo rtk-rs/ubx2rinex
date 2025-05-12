@@ -14,9 +14,7 @@ use crate::utils::from_timescale;
 
 use log::{debug, error};
 
-use crate::{collecter::Message, UbloxSettings};
-
-use tokio::sync::mpsc::Sender;
+use crate::UbloxSettings;
 
 pub struct Device {
     pub port: Box<dyn SerialPort>,
@@ -24,10 +22,10 @@ pub struct Device {
 }
 
 impl Device {
-    pub fn configure(&mut self, settings: &UbloxSettings, buf: &mut [u8], tx: Sender<Message>) {
+    pub fn configure(&mut self, settings: &UbloxSettings, buf: &mut [u8]) {
         let mut vec = Vec::with_capacity(1024);
 
-        self.read_version(buf, tx).unwrap();
+        self.read_version(buf).unwrap();
 
         if settings.rx_clock {
             self.enable_nav_clock(buf);
@@ -167,7 +165,7 @@ impl Device {
         }
     }
 
-    pub fn read_version(&mut self, buffer: &mut [u8], tx: Sender<Message>) -> std::io::Result<()> {
+    pub fn read_version(&mut self, buffer: &mut [u8]) -> std::io::Result<()> {
         self.write_all(&UbxPacketRequest::request_for::<MonVer>().into_packet_bytes())
             .unwrap_or_else(|e| panic!("Failed to request firmware version: {}", e));
 
@@ -179,12 +177,6 @@ impl Device {
                     let firmware = pkt.hardware_version();
                     debug!("U-Blox Software version: {}", pkt.software_version());
                     debug!("U-Blox Firmware version: {}", firmware);
-
-                    tx.try_send(Message::FirmwareVersion(pkt.hardware_version().to_string()))
-                        .unwrap_or_else(|e| {
-                            panic!("internal error reading firmware version: {}", e)
-                        });
-
                     packet_found = true;
                 }
             })?;

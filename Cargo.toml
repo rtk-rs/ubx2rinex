@@ -16,21 +16,26 @@ flate2 = "1"
 thiserror = "2"
 itertools = "0.14"
 serialport = "4.2"
+serde = "1"
+serde_json = "1"
+lazy_static = "1.4"
 
 log = "0.4"
 env_logger = "0.11"
 pretty_env_logger = "0.5"
-tokio = { version = "1.43", features = ["full"] }
-clap = { version = "4.4.10", features = ["derive", "color"] }
 
-serde = "1"
-serde_json = "1"
+crossbeam-channel = "0.5"
+tokio = { version = "1.43", features = ["full"] }
+
+clap = { version = "4.4.10", features = ["derive", "color"] }
 
 hifitime = { git = "https://github.com/nyx-space/hifitime", branch = "master" }
 gnss-rs = { git = "https://github.com/rtk-rs/gnss", branch = "main", features = ["serde"] }
 
 # ublox = "0.4.5"
-ublox = { git = "https://github.com/ublox-rs/ublox", branch = "master", default-features = false, features = ["std", "ubx_proto31"] }
+# ublox = { path = "../../ublox/ublox" }
+# ublox = { git = "https://github.com/ublox-rs/ublox", branch = "master", default-features = false, features = ["std", "ubx_proto31"] }
+# ublox = { git = "https://github.com/ublox-rs/ublox", branch = "sfrbx-protos", default-features = false, features = ["std", "ubx_proto31"] }
 
 # rinex = { version = "0.17.0", features = ["nav", "obs"] }
 rinex = { git = "https://github.com/rtk-rs/rinex", branch = "main", features = ["nav", "obs"] }

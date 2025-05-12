@@ -11,67 +11,65 @@ use rinex::{
     },
 };
 
-use tokio::{sync::mpsc::Receiver as Rx, sync::watch::Receiver as WatchRx};
+use crossbeam_channel::Receiver;
 
 use log::error;
 
 use crate::{
-    collecter::{fd::FileDescriptor, settings::Settings, Message},
+    collecter::{
+        fd::FileDescriptor, observations::settings::Settings, runtime::Runtime,
+        settings::Settings as SharedSettings, Message,
+    },
     UbloxSettings,
 };
 
 pub struct Collecter {
-    t: Option<Epoch>,
-    t0: Option<Epoch>,
-    buf: Observations,
+    opts: Settings,
+    shared_opts: SharedSettings,
+    deploy_time: Epoch,
+    latest_t: Option<Epoch>,
+    buffer: Observations,
+    rx: Receiver<Message>,
+    time_of_first_obs: Option<Epoch>,
     header: Option<ObsHeader>,
-    rx: Rx<Message>,
-    shutdown: WatchRx<bool>,
-    settings: Settings,
-    ubx_settings: UbloxSettings,
     fd: Option<BufWriter<FileDescriptor>>,
 }
 
 impl Collecter {
     /// Builds new [Collecter]
     pub fn new(
-        settings: Settings,
-        ublox: UbloxSettings,
-        shutdown: WatchRx<bool>,
-        rx: Rx<Message>,
+        rtm: &Runtime,
+        opts: Settings,
+        shared_opts: SharedSettings,
+        rx: Receiver<Message>,
     ) -> Self {
+        let deploy_time = rtm.deploy_time;
+
         Self {
             rx,
-            shutdown,
-            settings,
+            deploy_time,
             fd: None,
-            t0: None,
-            t: None,
+            opts,
+            shared_opts,
             header: None,
-            ubx_settings: ublox,
-            buf: Observations::default(),
+            latest_t: None,
+            time_of_first_obs: None,
+            buffer: Observations::default(),
         }
     }
 
     /// Obtain a new file descriptor
     fn fd(&self, t: Epoch) -> FileDescriptor {
-        let filename = self.settings.filename(false, t);
-        FileDescriptor::new(self.settings.gzip, &filename)
+        let filename = self.opts.filename(t, &self.shared_opts);
+        FileDescriptor::new(self.shared_opts.gzip, &filename)
     }
 
     pub async fn run(&mut self) {
         loop {
-            match self.rx.recv().await {
-                Some(msg) => match msg {
-                    Message::Timestamp(t) => {},
-                    Message::FirmwareVersion(version) => {
-                        self.ubx_settings.firmware = Some(version.to_string());
-                    },
-
+            match self.rx.recv() {
+                Ok(msg) => match msg {
                     Message::Shutdown => {
-                        if self.buf.signals.len() > 0 || self.buf.clock.is_some() {
-                            self.release_epoch();
-                        }
+                        // not really handled
                         return;
                     },
 
@@ -79,83 +77,88 @@ impl Collecter {
                         let bias = clock * 1.0E-3;
                         let mut clock = ClockObservation::default();
                         clock.set_offset_s(Default::default(), bias);
-                        self.buf.clock = Some(clock);
+                        self.buffer.clock = Some(clock);
                     },
 
-                    Message::Measurement(rawxm) => {
-                        if self.t0.is_none() {
-                            self.t0 = Some(rawxm.t);
+                    Message::Rawxm(rawxm) => {
+                        if self.time_of_first_obs.is_none() {
+                            self.time_of_first_obs = Some(rawxm.t);
                             self.release_header();
                         }
 
-                        if self.t.is_none() {
-                            self.t = Some(rawxm.t);
+                        if self.latest_t.is_none() {
+                            self.latest_t = Some(rawxm.t);
                         }
 
-                        let t = self.t.unwrap();
+                        let latest_t = self.latest_t.unwrap();
 
-                        if rawxm.t > t {
-                            if self.buf.signals.len() > 0 || self.buf.clock.is_some() {
+                        if rawxm.t > latest_t {
+                            // New epoch
+                            if self.has_pending_content() {
                                 self.release_epoch();
                             }
                         }
 
-                        let c1c = if self.settings.major == 3 {
+                        let c1c = if self.shared_opts.major == 3 {
                             Observable::from_str("C1C").unwrap()
                         } else {
                             Observable::from_str("C1").unwrap()
                         };
 
-                        let l1c = if self.settings.major == 3 {
+                        let l1c = if self.shared_opts.major == 3 {
                             Observable::from_str("L1C").unwrap()
                         } else {
                             Observable::from_str("L1").unwrap()
                         };
 
-                        let d1c = if self.settings.major == 3 {
+                        let d1c = if self.shared_opts.major == 3 {
                             Observable::from_str("D1C").unwrap()
                         } else {
                             Observable::from_str("D1").unwrap()
                         };
 
-                        self.buf.signals.push(SignalObservation {
+                        self.buffer.signals.push(SignalObservation {
                             sv: rawxm.sv,
-                            lli: None,
-                            snr: None,
+                            lli: None, // TODO
+                            snr: None, // TODO
                             value: rawxm.cp,
                             observable: c1c,
                         });
 
-                        self.buf.signals.push(SignalObservation {
+                        self.buffer.signals.push(SignalObservation {
                             sv: rawxm.sv,
-                            lli: None,
-                            snr: None,
+                            lli: None, // TODO
+                            snr: None, // TODO
                             value: rawxm.pr,
                             observable: l1c,
                         });
 
-                        self.buf.signals.push(SignalObservation {
+                        self.buffer.signals.push(SignalObservation {
                             sv: rawxm.sv,
-                            lli: None,
-                            snr: None,
+                            lli: None, // TODO
+                            snr: None, // TODO
                             value: rawxm.dop as f64,
                             observable: d1c,
                         });
 
-                        self.t = Some(rawxm.t);
+                        // update
+                        self.latest_t = Some(rawxm.t);
                     },
                     _ => {},
                 },
-                None => {},
+                Err(e) => {
+                    error!("obs_rinex: recv error {}", e);
+                    return;
+                },
             }
         }
     }
 
     fn release_header(&mut self) {
-        let t0 = self.t0.unwrap();
+        let time_of_first_obs = self.time_of_first_obs.unwrap();
 
         // obtain new file, release header
-        let mut fd = BufWriter::new(self.fd(t0));
+        let mut fd = BufWriter::new(self.fd(time_of_first_obs));
 
         let header = self.build_header();
 
@@ -173,10 +176,10 @@ impl Collecter {
     }
 
     fn release_epoch(&mut self) {
-        let t = self.t.unwrap();
+        let latest_t = self.latest_t.unwrap();
 
         let key = ObsKey {
-            epoch: t,
+            epoch: latest_t,
             flag: EpochFlag::Ok, // TODO,
         };
 
@@ -188,16 +191,17 @@ impl Collecter {
             .expect("internal error: missing Observation header");
 
         match self
-            .buf
-            .format(self.settings.major == 2, &key, header, &mut fd)
+            .buffer
+            .format(self.shared_opts.major == 2, &key, header, &mut fd)
         {
             Ok(_) => {
+                // clear for next time
                 let _ = fd.flush();
-                self.buf.clock = None;
-                self.buf.signals.clear();
+                self.buffer.clock = None;
+                self.buffer.signals.clear();
             },
             Err(e) => {
-                error!("{} formatting issue: {}", t, e);
+                error!("{} formatting issue: {}", latest_t, e);
             },
         }
     }
@@ -206,14 +210,14 @@ impl Collecter {
         let mut header = Header::default();
 
         header.rinex_type = RinexType::ObservationData;
-        header.version.major = self.settings.major;
+        header.version.major = self.shared_opts.major;
 
         let mut obs_header = ObsHeader::default();
 
-        if self.settings.crinex {
+        if self.opts.crinex {
             let mut crinex = CRINEX::default();
 
-            if self.settings.major == 2 {
+            if self.shared_opts.major == 2 {
                 crinex.version.major = 2;
             } else {
                 crinex.version.major = 3;
@@ -222,17 +226,21 @@ impl Collecter {
             obs_header.crinex = Some(crinex);
         }
 
-        if let Some(operator) = &self.settings.operator {
+        if let Some(operator) = &self.shared_opts.operator {
             header.observer = Some(operator.clone());
         }
 
-        if let Some(agency) = &self.settings.agency {
+        if let Some(agency) = &self.shared_opts.agency {
             header.agency = Some(agency.clone());
         }
 
-        obs_header.codes = self.settings.observables.clone();
+        obs_header.codes = self.opts.observables.clone();
 
         header.obs = Some(obs_header);
         header
+    }
+
+    fn has_pending_content(&self) -> bool {
+        self.buffer.signals.len() > 0 || self.buffer.clock.is_some()
     }
 }
