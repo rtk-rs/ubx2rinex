@@ -1,4 +1,4 @@
-use rinex::prelude::Epoch;
+use rinex::prelude::{Duration, Epoch};
 
 #[derive(Debug, Copy, Clone)]
 pub struct Runtime {
@@ -9,9 +9,11 @@ impl Runtime {
     pub fn new() -> Self {
         Self {
             deploy_time: {
-                Epoch::now().unwrap_or_else(|e| {
+                let now = Epoch::now().unwrap_or_else(|e| {
                     panic!("Failed to determine system time: {}", e);
-                })
+                });
+
+                now.round(Duration::from_seconds(1.0))
             },
         }
     }

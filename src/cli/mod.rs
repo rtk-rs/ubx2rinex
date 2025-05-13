@@ -49,41 +49,36 @@ impl Cli {
                 .value_name("Baudrate (u32)")
                 .help("Define serial port baud rate. Communications will not work if your U-Blox streams at a different data-rate. By default we use 115_200"),
         )
-        .next_help_heading("Constellation selection - at lease one required!")
+        .next_help_heading("Constellation configuration")
         .arg(
             Arg::new("gps")
                 .long("gps")
                 .action(ArgAction::SetTrue)
                 .help("Activate GPS constellation")
-                .required_unless_present_any(["galileo", "beidou", "qzss", "glonass"]),
         )
         .arg(
             Arg::new("galileo")
                 .long("galileo")
                 .action(ArgAction::SetTrue)
                 .help("Activate Galileo constellation")
-                .required_unless_present_any(["gps", "beidou", "qzss", "glonass"]),
         )
         .arg(
             Arg::new("bds")
                 .long("bds")
                 .action(ArgAction::SetTrue)
                 .help("Activate BDS (BeiDou) constellation")
-                .required_unless_present_any(["galileo", "gps", "qzss", "glonass"]),
         )
         .arg(
             Arg::new("qzss")
                 .long("qzss")
                 .action(ArgAction::SetTrue)
                 .help("Activate QZSS constellation")
-                .required_unless_present_any(["galileo", "gps", "bds", "glonass"]),
         )
         .arg(
             Arg::new("glonass")
                 .long("glonass")
                 .action(ArgAction::SetTrue)
                 .help("Activate Glonass constellation")
-                .required_unless_present_any(["galileo", "gps", "bds", "qzss"]),
         )
         .next_help_heading("Signal selection - at least one required!")
         .arg(

@@ -112,9 +112,8 @@ In this mode, the U-Blox serves as a signal source that we can snapshot to RINEX
 This tool supports V2, V3 and V4 RINEX revisions. Selecting a revision applies to all RINEX formats,
 so if you select V4 NAV collection, it will also apply to your signal collection, in case both are active.
 
-To deploy you must activate at least one constellation, one carrier signal and select one observable.
+To deploy you must select one carrier signal and select one observable.
 
-- We propose one flag per constellation (for example `--gps`)
 - We propose one flag per signal (for example `--l1`) 
 - And we have one flag per observable, and `--all-meas` that activates all of them)
 
