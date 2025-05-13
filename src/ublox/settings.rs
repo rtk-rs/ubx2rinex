@@ -5,18 +5,19 @@ use ublox_lib::{cfg_val::CfgVal, CfgLayerSet, CfgValSetBuilder};
 pub struct Settings {
     /// L1 activated for all constellations
     pub l1: bool,
+
     /// L2 activated for all constellations
     pub l2: bool,
+
     /// L5 activated for all constellations
     pub l5: bool,
+
     /// Timescale we align to
     pub timescale: TimeScale,
+
     /// Sampling [Duration]
     pub sampling_period: Duration,
-    /// Rawxm enable
-    pub rawxm: bool,
-    /// Ephemeris enable
-    pub ephemeris: bool,
+
     /// ratio
     pub solutions_ratio: u16,
 

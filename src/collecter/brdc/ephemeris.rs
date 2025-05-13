@@ -1,4 +1,7 @@
-use rinex::prelude::{Epoch, SV};
+use rinex::{
+    navigation::Ephemeris,
+    prelude::{Constellation, Epoch, SV},
+};
 
 use ublox_lib::{
     GpsEphFrame1, GpsEphFrame2, GpsEphFrame3, GpsFrame, GpsHowWord, GpsSubframe, GpsTelemetryWord,
@@ -8,6 +11,7 @@ use ublox_lib::{
 use super::sfrbx::Sfrbx;
 
 pub struct GpsEphMessages {
+    sv: SV,
     how: GpsHowWord,
     tlm: GpsTelemetryWord,
     frame1: Option<GpsEphFrame1>,
@@ -32,8 +36,9 @@ impl GpsEphMessages {
         false
     }
 
-    pub fn from_gps_frame(gps: GpsFrame) -> Self {
+    pub fn from_gps_frame(sv: SV, gps: GpsFrame) -> Self {
         Self {
+            sv,
             how: gps.how,
             tlm: gps.telemetry,
             frame1: match &gps.subframe {
@@ -78,9 +83,11 @@ pub enum EphMessages {
 }
 
 impl EphMessages {
-    pub fn from_sfrbx(sfrbx: RxmSfrbxInterpreted) -> Self {
-        match sfrbx {
-            RxmSfrbxInterpreted::GPS(gps) => Self::GPS(GpsEphMessages::from_gps_frame(gps)),
+    pub fn from_sfrbx(sfrbx: Sfrbx) -> Self {
+        match sfrbx.interpreted {
+            RxmSfrbxInterpreted::GPS(gps) => {
+                Self::GPS(GpsEphMessages::from_gps_frame(sfrbx.sv, gps))
+            },
         }
     }
 
@@ -93,7 +100,7 @@ impl EphMessages {
 }
 
 pub struct EphBuffer {
-    buffer: Vec<Sfrbx>,
+    pub buffer: Vec<GpsEphMessages>,
 }
 
 impl EphBuffer {
@@ -104,15 +111,19 @@ impl EphBuffer {
     }
 
     pub fn latch_rxm_sfrbx(&mut self, sfrbx: Sfrbx) {
-        if let Some(data) = self.buffer.iter_mut().find(|k| k.sv == sfrbx.sv) {
-            data.interpreted = sfrbx.interpreted;
-        } else {
-            self.buffer.push(sfrbx);
+        match sfrbx.interpreted {
+            RxmSfrbxInterpreted::GPS(gps_frame) => {
+                if let Some(data) = self.buffer.iter_mut().find(|k| k.sv == sfrbx.sv) {
+                    data.latch_gps_frame(gps_frame);
+                } else {
+                    let msg = GpsEphMessages::from_gps_frame(sfrbx.sv, gps_frame);
+                    self.buffer.push(msg);
+                }
+            },
         }
     }
 
     pub fn has_pending_content(&self) -> bool {
-        // self.buffer.iter().filter(|(_, v)| v.is_ready()).count() > 0
-        false
+        self.buffer.iter().filter(|k| k.is_ready()).count() > 0
     }
 }

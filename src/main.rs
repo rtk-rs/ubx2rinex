@@ -59,6 +59,7 @@ pub async fn main() {
     let baud_rate = cli.baud_rate().unwrap_or(115_200);
     let shared_settings = cli.settings();
     let obs_settings = cli.obs_settings();
+    let nav_settings = cli.nav_settings();
     let ubx_settings = cli.ublox_settings();
 
     let sampling_period = ubx_settings.sampling_period;
@@ -88,7 +89,7 @@ pub async fn main() {
 
     ublox.configure(&tx, &shared_settings, &ubx_settings, &mut buffer);
 
-    let mut collecter = Collector::new(shared_settings, obs_settings.clone(), rx);
+    let mut collecter = Collector::new(shared_settings, obs_settings.clone(), nav_settings, rx);
 
     tokio::spawn(async move {
         collecter.run(sampling_period).await;

@@ -63,11 +63,8 @@ impl Device {
             self.apply_cfg_rate(buf, measure_rate_ms, ubx_settings.solutions_ratio, time_ref);
         }
 
-        if rinex_settings.nav {
-            self.enable_nav_rinex(rinex_settings.nav, buf);
-            // request AID-HUI for Kb model -> header
-            //
-        }
+        self.enable_nav_rinex(rinex_settings.nav, buf);
+        // TODO request AID-HUI for Kb model -> header
 
         // CFG-ValSet
         ubx_settings.to_ram_volatile_cfg(&mut vec);
@@ -267,6 +264,8 @@ impl Device {
         // By setting 1 in the array below, we enable the NavPvt message for Uart1, Uart2 and USB
         // The other positions are for I2C, SPI, etc. Consult your device manual.
         if enabled {
+            debug!("UBX-RXM-RAWX");
+
             self.write_all(
                 &CfgMsgAllPortsBuilder::set_rate_for::<RxmRawx>([1, 1, 1, 1, 1, 1])
                     .into_packet_bytes(),
@@ -286,6 +285,8 @@ impl Device {
 
     fn enable_nav_rinex(&mut self, enabled: bool, buffer: &mut [u8]) {
         if enabled {
+            debug!("UBX-RXM-SFRBX");
+
             self.write_all(
                 &CfgMsgAllPortsBuilder::set_rate_for::<RxmSfrbx>([1, 1, 1, 1, 1, 1])
                     .into_packet_bytes(),

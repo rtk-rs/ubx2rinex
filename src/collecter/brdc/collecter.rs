@@ -1,39 +1,27 @@
-use std::{
-    collections::BTreeMap,
-    io::{BufWriter, Write},
-};
+use std::io::{BufWriter, Write};
 
-use log::{error, info};
+use rinex::prelude::{Epoch, Header, Version};
 
-use rinex::{
-    navigation::{NavFrame, NavFrameType, NavKey, NavMessageType},
-    prelude::{Epoch, Header, Version},
-    record::Record,
-};
+use log::error;
 
-use tokio::{sync::mpsc::Receiver as Rx, sync::watch::Receiver as WatchRx};
+use crossbeam_channel::Receiver;
 
-use crate::{
-    collecter::{
-        brdc::{ephemeris::EphBuffer, settings::Settings},
-        fd::FileDescriptor,
-        runtime::Runtime,
-        settings::Settings as SharedSettings,
-        Message,
-    },
-    ublox::Settings as UbloxSettings,
+use crate::collecter::{
+    brdc::{ephemeris::EphBuffer, settings::Settings},
+    fd::FileDescriptor,
+    runtime::Runtime,
+    settings::Settings as SharedSettings,
+    Message,
 };
 
 pub struct Collecter {
-    rx: Rx<Message>,
+    rx: Receiver<Message>,
     deploy_time: Epoch,
     first_t: Option<Epoch>,
     opts: Settings,
     shared_opts: SharedSettings,
     header_released: bool,
-    header: Option<Header>,
     fd: Option<BufWriter<FileDescriptor>>,
-    eph_buffer: EphBuffer,
 }
 
 impl Collecter {
@@ -42,18 +30,16 @@ impl Collecter {
         rtm: &Runtime,
         opts: Settings,
         shared_opts: SharedSettings,
-        rx: Rx<Message>,
+        rx: Receiver<Message>,
     ) -> Self {
         Self {
             rx,
             fd: None,
             first_t: None,
             header_released: false,
-            eph_buffer: EphBuffer::new(),
             deploy_time: rtm.deploy_time,
             opts,
             shared_opts,
-            header: None,
         }
     }
 
@@ -74,8 +60,8 @@ impl Collecter {
         let mut eph_buffer = EphBuffer::new();
 
         loop {
-            match self.rx.recv().await {
-                Some(msg) => match msg {
+            match self.rx.recv() {
+                Ok(msg) => match msg {
                     Message::EndofEpoch(t) => {},
 
                     Message::Sfrbx(sfrbx) => {
@@ -91,34 +77,36 @@ impl Collecter {
                         }
 
                         let fd = self.fd.as_mut().unwrap();
-                        let header = self.header.as_ref().unwrap();
 
-                        // for eph in eph_buffer.iter().filter(|eph| eph.is_ready()) {
-                        //     if let Some(toc) = eph_buffer.toc() {
+                        for eph in eph_buffer.buffer.iter().filter(|eph| eph.is_ready()) {
+                            //     if let Some(toc) = eph_buffer.toc() {
 
-                        // if let Some(latest_toc) = self.latest_toc.get_mut(&eph.sv) {
-                        //     if toc - latest_toc >= Duration::from_hours(2.0) {
-                        //         let rinex = eph.to_rinex();
+                            // if let Some(latest_toc) = self.latest_toc.get_mut(&eph.sv) {
+                            //     if toc - latest_toc >= Duration::from_hours(2.0) {
+                            //         let rinex = eph.to_rinex();
 
-                        //         match rinex.format(fd, header) {
-                        //             Ok(_) => {
-                        //                 info!("{} - released NAV content", latest_t);
-                        //             },
-                        //             Err(e) => {
-                        //                 error!("{} - failed to release NAV content: {}", latest_t, e);
-                        //             },
-                        //         }
+                            //         match rinex.format(fd, header) {
+                            //             Ok(_) => {
+                            //                 info!("{} - released NAV content", latest_t);
+                            //             },
+                            //             Err(e) => {
+                            //                 error!("{} - failed to release NAV content: {}", latest_t, e);
+                            //             },
+                            //         }
 
-                        //         *latest_toc = toc;
-                        //     }
-                        // }
-                        //     }
-                        // }
+                            //         *latest_toc = toc;
+                            //     }
+                            // }
+                            //     }
+                        }
                     },
 
                     _ => {},
                 },
-                None => {},
+                Err(e) => {
+                    error!("recv error: {}", e);
+                    return;
+                },
             }
         }
     }
@@ -128,26 +116,26 @@ impl Collecter {
     }
 
     fn release_header(&mut self) {
+        let version = Version::new(self.shared_opts.major, 0);
 
-        // let version = Version::new(shared_opts.major, 0);
+        let mut header = Header::basic_nav().with_version(version);
 
-        // let mut header = Header::basic_nav().with_version(version);
+        if let Some(agency) = &self.shared_opts.agency {
+            header.agency = Some(agency.to_string());
+        }
 
-        // if let Some(agency) = &shared_opts.agency {
-        //     header.agency = Some(agency.to_string());
-        // }
+        // obtain a file descriptor
+        // TODO: use first message toc
+        let mut fd = BufWriter::new(self.fd(self.deploy_time));
 
-        // // obtain a file descriptor
-        // let mut fd = BufWriter::new(self.fd());
+        header.format(&mut fd).unwrap_or_else(|e| {
+            panic!(
+                "RINEX header formatting: {}. Aborting (avoiding corrupt file)",
+                e
+            );
+        });
 
-        // self.header.format(&mut fd).unwrap_or_else(|e| {
-        //     panic!(
-        //         "RINEX header formatting: {}. Aborting (avoiding corrupt file)",
-        //         e
-        //     );
-        // });
-
-        // let _ = fd.flush();
-        // self.fd = Some(fd);
+        let _ = fd.flush();
+        self.fd = Some(fd);
     }
 }

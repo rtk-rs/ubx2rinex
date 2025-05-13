@@ -7,10 +7,10 @@ pub mod runtime;
 pub mod settings;
 
 use observations::{
-    collecter::Collecter as Obscollector, rawxm::Rawxm, settings::Settings as ObsSettings,
+    collecter::Collecter as Obscollecter, rawxm::Rawxm, settings::Settings as ObsSettings,
 };
 
-use brdc::{collecter::Collecter, settings::Settings as NavSettings, sfrbx::Sfrbx};
+use brdc::{collecter::Collecter as NavCollecter, settings::Settings as NavSettings, sfrbx::Sfrbx};
 
 use runtime::Runtime;
 
@@ -51,12 +51,14 @@ pub struct Collector {
     rx: Receiver<Message>,
     shared_settings: Settings,
     obs_settings: ObsSettings,
+    nav_settings: NavSettings,
 }
 
 impl Collector {
     pub fn new(
         shared_settings: Settings,
         obs_settings: ObsSettings,
+        nav_settings: NavSettings,
         rx: Receiver<Message>,
     ) -> Self {
         let rtm = Runtime::new();
@@ -65,6 +67,7 @@ impl Collector {
             rx,
             rtm,
             obs_settings,
+            nav_settings,
             shared_settings,
         }
     }
@@ -73,7 +76,7 @@ impl Collector {
         if !self.shared_settings.no_obs {
             debug!("{} - OBS RINEX collecter deployed", self.rtm.deploy_time);
 
-            let mut obs_rinex = Obscollector::new(
+            let mut obs_rinex = Obscollecter::new(
                 &self.rtm,
                 self.obs_settings.clone(),
                 sampling_period,
@@ -89,7 +92,16 @@ impl Collector {
         if self.shared_settings.nav {
             debug!("{} - NAV RINEX collecter deployed", self.rtm.deploy_time);
 
-            tokio::spawn(async move {});
+            let mut nav_rinex = NavCollecter::new(
+                &self.rtm,
+                self.nav_settings.clone(),
+                self.shared_settings.clone(),
+                self.rx.clone(),
+            );
+
+            tokio::spawn(async move {
+                nav_rinex.run().await;
+            });
         }
     }
 }
