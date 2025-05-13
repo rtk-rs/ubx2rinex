@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     io::{BufWriter, Write},
     str::FromStr,
 };
@@ -7,13 +8,13 @@ use rinex::{
     observation::{ClockObservation, HeaderFields as ObsHeader},
     prelude::{
         obs::{EpochFlag, ObsKey, Observations, SignalObservation},
-        Epoch, Header, Observable, RinexType, CRINEX,
+        Constellation, Duration, Epoch, Header, Observable, RinexType, CRINEX,
     },
 };
 
 use crossbeam_channel::Receiver;
 
-use log::error;
+use log::{error, info};
 
 use crate::collecter::{
     fd::FileDescriptor, observations::settings::Settings, runtime::Runtime,
@@ -24,11 +25,14 @@ pub struct Collecter {
     opts: Settings,
     shared_opts: SharedSettings,
     deploy_time: Epoch,
+    sampling_period: Duration,
     latest_t: Option<Epoch>,
     buffer: Observations,
     rx: Receiver<Message>,
     time_of_first_obs: Option<Epoch>,
+    constellations: Vec<Constellation>,
     header: Option<ObsHeader>,
+    header_released: bool,
     fd: Option<BufWriter<FileDescriptor>>,
 }
 
@@ -37,6 +41,7 @@ impl Collecter {
     pub fn new(
         rtm: &Runtime,
         opts: Settings,
+        sampling_period: Duration,
         shared_opts: SharedSettings,
         rx: Receiver<Message>,
     ) -> Self {
@@ -50,8 +55,11 @@ impl Collecter {
             shared_opts,
             header: None,
             latest_t: None,
+            header_released: false,
             time_of_first_obs: None,
+            sampling_period,
             buffer: Observations::default(),
+            constellations: Vec::with_capacity(4),
         }
     }
 
@@ -77,14 +85,38 @@ impl Collecter {
                         self.buffer.clock = Some(clock);
                     },
 
+                    Message::Constellations(constellations) => {
+                        self.constellations = constellations.clone();
+                    },
+
                     Message::Rawxm(rawxm) => {
+                        if !self.constellations.contains(&rawxm.sv.constellation) {
+                            // unknown / unexpected: should not happen
+                            continue;
+                        }
+
+                        if let Some(latest_t) = self.latest_t {
+                            let time_of_first_obs = self.time_of_first_obs.unwrap();
+                            let dt = latest_t - time_of_first_obs;
+
+                            if dt >= self.shared_opts.snapshot_period {
+                                info!("{} - file publication", rawxm.t);
+                                self.time_of_first_obs = None;
+                                self.header_released = false;
+                            }
+                        }
+
                         if self.time_of_first_obs.is_none() {
                             self.time_of_first_obs = Some(rawxm.t);
-                            self.release_header();
                         }
 
                         if self.latest_t.is_none() {
                             self.latest_t = Some(rawxm.t);
+                        }
+
+                        if self.may_release_header() && !self.header_released {
+                            self.release_header();
+                            self.header_released = true;
                         }
 
                         let latest_t = self.latest_t.unwrap();
@@ -96,53 +128,66 @@ impl Collecter {
                             }
                         }
 
-                        let c1c = if self.shared_opts.major == 3 {
-                            Observable::from_str("C1C").unwrap()
-                        } else {
-                            Observable::from_str("C1").unwrap()
-                        };
+                        if self.opts.pr {
+                            let c1c = if self.shared_opts.major > 2 {
+                                Observable::from_str("C1C").unwrap()
+                            } else {
+                                Observable::from_str("C1").unwrap()
+                            };
 
-                        let l1c = if self.shared_opts.major == 3 {
-                            Observable::from_str("L1C").unwrap()
-                        } else {
-                            Observable::from_str("L1").unwrap()
-                        };
+                            self.buffer.signals.push(SignalObservation {
+                                sv: rawxm.sv,
+                                lli: None, // TODO
+                                snr: None, // TODO
+                                value: rawxm.pr,
+                                observable: c1c,
+                            });
+                        }
 
-                        let d1c = if self.shared_opts.major == 3 {
-                            Observable::from_str("D1C").unwrap()
-                        } else {
-                            Observable::from_str("D1").unwrap()
-                        };
+                        if self.opts.cp {
+                            let l1c = if self.shared_opts.major > 2 {
+                                Observable::from_str("L1C").unwrap()
+                            } else {
+                                Observable::from_str("L1").unwrap()
+                            };
 
-                        self.buffer.signals.push(SignalObservation {
-                            sv: rawxm.sv,
-                            lli: None, // TODO
-                            snr: None, // TODO
-                            value: rawxm.cp,
-                            observable: c1c,
-                        });
+                            self.buffer.signals.push(SignalObservation {
+                                sv: rawxm.sv,
+                                lli: None, // TODO
+                                snr: None, // TODO
+                                value: rawxm.cp,
+                                observable: l1c,
+                            });
+                        }
 
-                        self.buffer.signals.push(SignalObservation {
-                            sv: rawxm.sv,
-                            lli: None, // TODO
-                            snr: None, // TODO
-                            value: rawxm.pr,
-                            observable: l1c,
-                        });
+                        if self.opts.dop {
+                            let d1c = if self.shared_opts.major > 2 {
+                                Observable::from_str("D1C").unwrap()
+                            } else {
+                                Observable::from_str("D1").unwrap()
+                            };
 
-                        self.buffer.signals.push(SignalObservation {
-                            sv: rawxm.sv,
-                            lli: None, // TODO
-                            snr: None, // TODO
-                            value: rawxm.dop as f64,
-                            observable: d1c,
-                        });
+                            self.buffer.signals.push(SignalObservation {
+                                sv: rawxm.sv,
+                                lli: None, // TODO
+                                snr: None, // TODO
+                                value: rawxm.dop as f64,
+                                observable: d1c,
+                            });
+                        }
 
                         // update
-                        self.latest_t = Some(rawxm.t);
+                        let mut new_t = rawxm.t;
+
+                        if self.sampling_period < Duration::from_seconds(1.0) {
+                            new_t = new_t.round(Duration::from_seconds(1.0));
+                        }
+
+                        self.latest_t = Some(new_t);
                     },
                     _ => {},
                 },
+
                 Err(e) => {
                     error!("obs_rinex: recv error {}", e);
                     return;
@@ -231,10 +276,52 @@ impl Collecter {
             header.agency = Some(agency.clone());
         }
 
-        obs_header.codes = self.opts.observables.clone();
+        let mut observables = HashMap::<Constellation, Vec<Observable>>::new();
+
+        for constellation in self.constellations.iter() {
+            let mut codes = Vec::new();
+
+            if self.opts.pr {
+                if self.shared_opts.major > 2 {
+                    codes.push("C1C");
+                } else {
+                    codes.push("C1");
+                }
+            }
+
+            if self.opts.cp {
+                if self.shared_opts.major > 2 {
+                    codes.push("L1C");
+                } else {
+                    codes.push("L1");
+                }
+            }
+
+            if self.opts.dop {
+                if self.shared_opts.major > 2 {
+                    codes.push("D1C");
+                } else {
+                    codes.push("D1");
+                }
+            }
+
+            observables.insert(
+                *constellation,
+                codes
+                    .iter()
+                    .map(|code| Observable::from_str(code).unwrap())
+                    .collect(),
+            );
+        }
+
+        obs_header.codes = observables;
 
         header.obs = Some(obs_header);
         header
+    }
+
+    fn may_release_header(&self) -> bool {
+        !self.constellations.is_empty() && self.time_of_first_obs.is_some()
     }
 
     fn has_pending_content(&self) -> bool {

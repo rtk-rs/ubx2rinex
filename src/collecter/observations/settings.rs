@@ -16,6 +16,9 @@ use crate::collecter::settings::Settings as SharedSettings;
 #[derive(Debug, Clone)]
 pub struct Settings {
     pub crinex: bool,
+    pub dop: bool,
+    pub cp: bool,
+    pub pr: bool,
     pub timescale: TimeScale,
     pub observables: HashMap<Constellation, Vec<Observable>>,
 }
@@ -112,6 +115,9 @@ mod test {
         shared.snapshot_period = Duration::from_days(1.0);
 
         let mut settings = Settings {
+            dop: false,
+            pr: false,
+            cp: false,
             crinex: false,
             timescale: TimeScale::GPST,
             observables: Default::default(),
@@ -137,6 +143,9 @@ mod test {
         shared.snapshot_period = Duration::from_days(1.0);
 
         let mut settings = Settings {
+            dop: false,
+            pr: false,
+            cp: false,
             crinex: false,
             timescale: TimeScale::GPST,
             observables: Default::default(),

@@ -532,6 +532,9 @@ Use this if you intend to collect Ephemeris only."),
 
     pub fn obs_settings(&self) -> ObsSettings {
         ObsSettings {
+            cp: self.matches.get_flag("cp") || self.matches.get_flag("all-meas"),
+            pr: self.matches.get_flag("pr") || self.matches.get_flag("all-meas"),
+            dop: self.matches.get_flag("dop") || self.matches.get_flag("all-meas"),
             timescale: self.timescale(),
             observables: self.observables(),
             crinex: self.matches.get_flag("crx"),

@@ -26,7 +26,7 @@ use tokio::{signal, sync::watch};
 
 use rinex::prelude::{Carrier, Duration, Epoch, TimeScale, SV};
 
-use ublox_lib::{NavStatusFlags, NavStatusFlags2, NavTimeUtcFlags, PacketRef, RecStatFlags};
+use ublox_lib::{PacketRef, RecStatFlags};
 
 mod cli;
 mod collecter;
@@ -59,14 +59,13 @@ pub async fn main() {
     let baud_rate = cli.baud_rate().unwrap_or(115_200);
     let shared_settings = cli.settings();
     let obs_settings = cli.obs_settings();
-    let mut ubx_settings = cli.ublox_settings();
+    let ubx_settings = cli.ublox_settings();
+
+    let sampling_period = ubx_settings.sampling_period;
 
     // init
     let mut buffer = [0; 8192];
     let mut uptime = Duration::default();
-
-    let mut fix_flags = NavStatusFlags::empty(); // current fix flag
-    let mut nav_status = NavStatusFlags2::Inactive;
 
     let timescale = ubx_settings.timescale;
 
@@ -78,9 +77,7 @@ pub async fn main() {
     let mut t_gpst = t_utc.to_time_scale(TimeScale::GPST);
 
     let mut nav_gpst = t_gpst;
-    let mut nav_gpst_week = t_gpst.to_time_of_week().0;
-
-    let mut t_gst = t_utc.to_time_scale(TimeScale::GST);
+    let nav_gpst_week = t_gpst.to_time_of_week().0;
 
     // Tokio
     let (shutdown_tx, shutdown_rx) = watch::channel(true);
@@ -94,7 +91,7 @@ pub async fn main() {
     let mut collecter = Collector::new(shared_settings, obs_settings.clone(), rx);
 
     tokio::spawn(async move {
-        collecter.run().await;
+        collecter.run(sampling_period).await;
     });
 
     tokio::spawn(async move {
@@ -213,22 +210,6 @@ pub async fn main() {
                             constellation,
                             prn: sv.sv_id(),
                         };
-                    }
-                },
-
-                PacketRef::NavTimeUTC(pkt) => {
-                    if pkt.valid().intersects(NavTimeUtcFlags::VALID_UTC) {
-                        // leap seconds already known
-                        let e = Epoch::maybe_from_gregorian(
-                            pkt.year().into(),
-                            pkt.month(),
-                            pkt.day(),
-                            pkt.hour(),
-                            pkt.min(),
-                            pkt.sec(),
-                            pkt.nanos() as u32,
-                            TimeScale::UTC,
-                        );
                     }
                 },
 

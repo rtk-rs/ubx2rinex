@@ -18,7 +18,7 @@ use settings::Settings;
 
 use rinex::{
     navigation::Ephemeris,
-    prelude::{Constellation, Epoch, SV},
+    prelude::{Constellation, Duration, Epoch, SV},
 };
 
 use crossbeam_channel::Receiver;
@@ -69,13 +69,14 @@ impl Collector {
         }
     }
 
-    pub async fn run(&mut self) {
+    pub async fn run(&mut self, sampling_period: Duration) {
         if !self.shared_settings.no_obs {
             debug!("{} - OBS RINEX collecter deployed", self.rtm.deploy_time);
 
             let mut obs_rinex = Obscollector::new(
                 &self.rtm,
                 self.obs_settings.clone(),
+                sampling_period,
                 self.shared_settings.clone(),
                 self.rx.clone(),
             );
@@ -88,16 +89,7 @@ impl Collector {
         if self.shared_settings.nav {
             debug!("{} - NAV RINEX collecter deployed", self.rtm.deploy_time);
 
-            let mut obs_rinex = Obscollector::new(
-                &self.rtm,
-                self.obs_settings.clone(),
-                self.shared_settings.clone(),
-                self.rx.clone(),
-            );
-
-            tokio::spawn(async move {
-                obs_rinex.run().await;
-            });
+            tokio::spawn(async move {});
         }
     }
 }
