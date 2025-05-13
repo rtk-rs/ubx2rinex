@@ -1,4 +1,4 @@
-use ublox::{
+use ublox_lib::{
     AlignmentToReferenceTime, CfgMsgAllPorts, CfgMsgAllPortsBuilder, CfgPrtUart, CfgPrtUartBuilder,
     CfgRate, CfgRateBuilder, DataBits, InProtoMask, MgaGloEph, MgaGpsEph, MonVer, NavClock, NavEoe,
     NavPvt, NavSat, OutProtoMask, PacketRef, Parity, Parser, RxmRawx, StopBits, UartMode,

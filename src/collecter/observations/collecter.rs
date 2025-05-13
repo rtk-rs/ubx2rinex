@@ -20,7 +20,6 @@ use crate::{
         fd::FileDescriptor, observations::settings::Settings, runtime::Runtime,
         settings::Settings as SharedSettings, Message,
     },
-    UbloxSettings,
 };
 
 pub struct Collecter {

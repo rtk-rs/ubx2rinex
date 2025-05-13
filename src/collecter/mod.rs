@@ -1,6 +1,6 @@
 use log::debug;
 
-// pub mod brdc;
+pub mod brdc;
 pub mod fd;
 pub mod observations;
 pub mod runtime;
@@ -69,17 +69,36 @@ impl Collector {
     }
 
     pub async fn run(&mut self) {
-        debug!("{} - OBS RINEX collector deployed", self.rtm.deploy_time);
 
-        let mut obs_rinex = Obscollector::new(
-            &self.rtm,
-            self.obs_settings.clone(),
-            self.shared_settings.clone(),
-            self.rx.clone(),
-        );
+        if !self.shared_settings.no_obs {
+            debug!("{} - OBS RINEX collecter deployed", self.rtm.deploy_time);
+    
+            let mut obs_rinex = Obscollector::new(
+                &self.rtm,
+                self.obs_settings.clone(),
+                self.shared_settings.clone(),
+                self.rx.clone(),
+            );
+    
+            tokio::spawn(async move {
+                obs_rinex.run().await;
+            });
+        }
 
-        tokio::spawn(async move {
-            obs_rinex.run().await;
-        });
+        if self.shared_settings.nav {
+            debug!("{} - NAV RINEX collecter deployed", self.rtm.deploy_time);
+    
+            let mut obs_rinex = Obscollector::new(
+                &self.rtm,
+                self.obs_settings.clone(),
+                self.shared_settings.clone(),
+                self.rx.clone(),
+            );
+    
+            tokio::spawn(async move {
+                obs_rinex.run().await;
+            });
+
+        }
     }
 }
