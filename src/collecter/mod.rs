@@ -10,7 +10,7 @@ use observations::{
     collecter::Collecter as Obscollector, rawxm::Rawxm, settings::Settings as ObsSettings,
 };
 
-// use brdc::{collecter::Collecter as BrdcCollector, settings::Settings as BrdcSettings};
+use brdc::{collecter::Collecter, settings::Settings as NavSettings, sfrbx::Sfrbx};
 
 use runtime::Runtime;
 
@@ -18,10 +18,8 @@ use settings::Settings;
 
 use rinex::{
     navigation::Ephemeris,
-    prelude::{Epoch, SV},
+    prelude::{Constellation, Epoch, SV},
 };
-
-use ublox_lib::RxmSfrbxInterpreted;
 
 use crossbeam_channel::Receiver;
 
@@ -32,14 +30,17 @@ pub enum Message {
     /// [Message::EndofEpoch] notification
     EndofEpoch(Epoch),
 
+    /// Constellations
+    Constellations(Vec<Constellation>),
+
     /// New clock state [s]
     Clock(f64),
 
     /// [Rawxm]
     Rawxm(Rawxm),
 
-    /// [RxmSfrbxInterpreted]
-    Sfrbx(RxmSfrbxInterpreted),
+    /// [Sfrbx]
+    Sfrbx(Sfrbx),
 
     /// Ephemeris publication
     Ephemeris((Epoch, SV, Ephemeris)),
@@ -69,17 +70,16 @@ impl Collector {
     }
 
     pub async fn run(&mut self) {
-
         if !self.shared_settings.no_obs {
             debug!("{} - OBS RINEX collecter deployed", self.rtm.deploy_time);
-    
+
             let mut obs_rinex = Obscollector::new(
                 &self.rtm,
                 self.obs_settings.clone(),
                 self.shared_settings.clone(),
                 self.rx.clone(),
             );
-    
+
             tokio::spawn(async move {
                 obs_rinex.run().await;
             });
@@ -87,18 +87,17 @@ impl Collector {
 
         if self.shared_settings.nav {
             debug!("{} - NAV RINEX collecter deployed", self.rtm.deploy_time);
-    
+
             let mut obs_rinex = Obscollector::new(
                 &self.rtm,
                 self.obs_settings.clone(),
                 self.shared_settings.clone(),
                 self.rx.clone(),
             );
-    
+
             tokio::spawn(async move {
                 obs_rinex.run().await;
             });
-
         }
     }
 }

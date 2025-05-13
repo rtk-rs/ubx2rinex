@@ -33,7 +33,7 @@ hifitime = { git = "https://github.com/nyx-space/hifitime", branch = "master" }
 gnss-rs = { git = "https://github.com/rtk-rs/gnss", branch = "main", features = ["serde"] }
 
 # ublox = "0.4.5"
-# ublox = { path = "../../ublox/ublox" }
+ublox = { path = "../../ublox/ublox" }
 # ublox = { git = "https://github.com/ublox-rs/ublox", branch = "master", default-features = false, features = ["std", "ubx_proto31"] }
 # ublox = { git = "https://github.com/ublox-rs/ublox", branch = "sfrbx-protos", default-features = false, features = ["std", "ubx_proto31"] }
 

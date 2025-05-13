@@ -19,6 +19,7 @@ pub struct Settings {
     pub ephemeris: bool,
     /// ratio
     pub solutions_ratio: u16,
+
     /// Active [Constellation]s
     pub constellations: Vec<Constellation>,
 

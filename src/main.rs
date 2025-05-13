@@ -5,29 +5,26 @@
 
 /*
  * UBX2RINEX is part of the rtk-rs framework.
- * Authors: Guillaume W. Bres <guillaume.bressaix@gmail.com> et al,
- * (cf. https://github.com/rtk-rs/rinex/graphs/contributors)
- * (cf. https://github.com/rtk-rs/ubx2rinex/graphs/contributors)
- * This framework is shipped under Mozilla Public V2 license.
+ * Authors: Guillaume W. Bres <guillaume.bressaix@gmail.com> et al, see:
  *
+ * - https://github.com/rtk-rs/rinex/graphs/contributors
+ * - https://github.com/rtk-rs/ubx2rinex/graphs/contributors
+ * - https://github.com/ublox-rs/ublox/graphs/contributors
+ *
+ * This framework is shipped under MPL-2 or AGPL license when that applies.
  * Documentation: https://github.com/rtk-rs/ubx2rinex
  */
 
 extern crate gnss_rs as gnss;
 extern crate ublox as ublox_lib;
 
-use std::str::FromStr;
-
 use env_logger::{Builder, Target};
 
 use log::{debug, error, info, trace, warn};
 
-use tokio::{
-    signal,
-    sync::{mpsc, watch},
-};
+use tokio::{signal, sync::watch};
 
-use rinex::prelude::{Carrier, Constellation, Duration, Epoch, Observable, TimeScale, SV};
+use rinex::prelude::{Carrier, Duration, Epoch, TimeScale, SV};
 
 use ublox_lib::{NavStatusFlags, NavStatusFlags2, NavTimeUtcFlags, PacketRef, RecStatFlags};
 
@@ -38,7 +35,7 @@ mod utils;
 
 use crate::{
     cli::Cli,
-    collecter::{observations::rawxm::Rawxm, Collector, Message},
+    collecter::{brdc::sfrbx::Sfrbx, observations::rawxm::Rawxm, Collector, Message},
     ublox::{Settings as UbloxSettings, Ublox},
     utils::to_constellation,
 };
@@ -78,8 +75,6 @@ pub async fn main() {
         .unwrap_or_else(|e| panic!("Failed to determine system time: {}", e))
         .to_time_scale(TimeScale::UTC);
 
-    let mut nav_utc_week = t_utc.to_time_of_week().0;
-
     let mut t_gpst = t_utc.to_time_scale(TimeScale::GPST);
 
     let mut nav_gpst = t_gpst;
@@ -87,26 +82,16 @@ pub async fn main() {
 
     let mut t_gst = t_utc.to_time_scale(TimeScale::GST);
 
-    let mut nav_gst = t_gst;
-    let mut nav_gst_week = t_gst.to_time_of_week().0;
-
-    let mut t_bdt = t_utc.to_time_scale(TimeScale::BDT);
-
-    let mut nav_bdt = t_bdt;
-    let mut nav_bdt_week = t_bdt.to_time_of_week().0;
-
-    let mut end_of_nav_epoch = false;
-
     // Tokio
     let (shutdown_tx, shutdown_rx) = watch::channel(true);
 
     let (tx, rx) = crossbeam_channel::bounded(16);
 
-    let mut collecter = Collector::new(shared_settings, obs_settings.clone(), rx);
-
     let mut ublox = Ublox::open(port, baud_rate, &mut buffer);
 
-    ublox.configure(&ubx_settings, &mut buffer);
+    ublox.configure(&tx, &shared_settings, &ubx_settings, &mut buffer);
+
+    let mut collecter = Collector::new(shared_settings, obs_settings.clone(), rx);
 
     tokio::spawn(async move {
         collecter.run().await;
@@ -128,6 +113,7 @@ pub async fn main() {
                 PacketRef::MonHw(_) => {
                     // TODO
                 },
+
                 PacketRef::CfgNav5(pkt) => {
                     // Dynamic model
                     let _dyn_model = pkt.dyn_model();
@@ -227,12 +213,6 @@ pub async fn main() {
                             constellation,
                             prn: sv.sv_id(),
                         };
-
-                        // flags.sv_used()
-                        //flags.health();
-                        //flags.quality_ind();
-                        //flags.differential_correction_available();
-                        //flags.ephemeris_available();
                     }
                 },
 
@@ -274,7 +254,6 @@ pub async fn main() {
                         TimeScale::GPST,
                     );
 
-                    end_of_nav_epoch = true;
                     debug!("{} - End of Epoch", nav_gpst);
                     // let _ = nav_tx.try_send(Message::EndofEpoch(nav_gpst));
                 },
@@ -292,6 +271,23 @@ pub async fn main() {
                             pkt.latitude(),
                             pkt.longitude()
                         );
+                    }
+                },
+
+                PacketRef::RxmSfrbx(sfrbx) => {
+                    if let Some(constellation) = to_constellation(sfrbx.gnss_id()) {
+                        let sv = SV::new(constellation, sfrbx.sv_id());
+
+                        if let Some(interpreted) = sfrbx.interprete() {
+                            let sfrbx = Sfrbx { sv, interpreted };
+
+                            match tx.send(Message::Sfrbx(sfrbx)) {
+                                Ok(_) => {},
+                                Err(e) => {
+                                    error!("{} - missed SFRBX: {}", sv, e);
+                                },
+                            }
+                        }
                     }
                 },
 
@@ -320,6 +316,7 @@ pub async fn main() {
                         warn!("{}", msg);
                     }
                 },
+
                 _ => {},
             }
         });

@@ -15,12 +15,25 @@ pub struct Settings {
     /// Prefer long file names
     pub long_filename: bool,
 
+    /// Custom name (usually receiver model, or marker name)
     pub name: String,
+
+    /// RINEX revision major number
     pub major: u8,
-    pub country_code: String,
+
+    /// File prefix
     pub prefix: Option<String>,
+
+    /// Agency name
     pub agency: Option<String>,
+
+    /// Agency country code
+    pub country_code: String,
+
+    /// Operator / observer
     pub operator: Option<String>,
+
+    /// Snapshot period
     pub snapshot_period: Duration,
 }
 

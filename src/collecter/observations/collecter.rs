@@ -15,11 +15,9 @@ use crossbeam_channel::Receiver;
 
 use log::error;
 
-use crate::{
-    collecter::{
-        fd::FileDescriptor, observations::settings::Settings, runtime::Runtime,
-        settings::Settings as SharedSettings, Message,
-    },
+use crate::collecter::{
+    fd::FileDescriptor, observations::settings::Settings, runtime::Runtime,
+    settings::Settings as SharedSettings, Message,
 };
 
 pub struct Collecter {

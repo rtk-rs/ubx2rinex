@@ -14,107 +14,106 @@ use rinex::{
 use tokio::{sync::mpsc::Receiver as Rx, sync::watch::Receiver as WatchRx};
 
 use crate::{
-    collecter::{brdc::Settings as BrdcSettings, fd::FileDescriptor, settings::Settings, Message},
+    collecter::{
+        brdc::{ephemeris::EphBuffer, settings::Settings},
+        fd::FileDescriptor,
+        runtime::Runtime,
+        settings::Settings as SharedSettings,
+        Message,
+    },
     ublox::Settings as UbloxSettings,
 };
 
 pub struct Collecter {
-    /// T0: initial deploy time, updated on each file release.
-    t0: Epoch,
     rx: Rx<Message>,
-    shutdown: WatchRx<bool>,
-    settings: Settings,
-    header: Header,
-    record: Record,
-    ubx_settings: UbloxSettings,
+    deploy_time: Epoch,
+    first_t: Option<Epoch>,
+    opts: Settings,
+    shared_opts: SharedSettings,
+    header_released: bool,
+    header: Option<Header>,
     fd: Option<BufWriter<FileDescriptor>>,
+    eph_buffer: EphBuffer,
 }
 
 impl Collecter {
     /// Builds new [Collecter]
     pub fn new(
-        t0: Epoch,
-        settings: Settings,
-        ublox: UbloxSettings,
-        shutdown: WatchRx<bool>,
+        rtm: &Runtime,
+        opts: Settings,
+        shared_opts: SharedSettings,
         rx: Rx<Message>,
     ) -> Self {
-        let version = Version::new(settings.major, 0);
-
-        let mut header = Header::basic_nav().with_version(version);
-
-        if let Some(operator) = &settings.operator {
-            header.observer = Some(operator.clone());
-        }
-
-        if let Some(agency) = &settings.agency {
-            header.agency = Some(agency.to_string());
-        }
-
         Self {
-            t0,
             rx,
-            settings,
-            header,
             fd: None,
-            shutdown,
-            ubx_settings: ublox,
-            record: Record::NavRecord(BTreeMap::new()),
+            first_t: None,
+            header_released: false,
+            eph_buffer: EphBuffer::new(),
+            deploy_time: rtm.deploy_time,
+            opts,
+            shared_opts,
+            header: None,
         }
     }
 
     /// Obtain a new file descriptor
-    fn fd(&self) -> FileDescriptor {
-        let t = self.t0;
-        let filename = self.settings.filename(true, t);
-        FileDescriptor::new(self.settings.gzip, &filename)
+    fn fd(&self, t: Epoch) -> FileDescriptor {
+        let filename = self.opts.filename(t, &self.shared_opts);
+        FileDescriptor::new(self.shared_opts.gzip, &filename)
     }
 
+    // fn collect_ephemeris_content(&self, buffer: &EphBuffer) -> Entry {}
+
+    // fn toc(week: u16, toc: u32) -> Epoch {
+    //     let toc_nanos = (toc as f64) * 1_000_000_000;
+    //     Epoch::from_time_of_week(week, toc_nanos)
+    // }
+
     pub async fn run(&mut self) {
+        let mut eph_buffer = EphBuffer::new();
+
         loop {
             match self.rx.recv().await {
                 Some(msg) => match msg {
-                    Message::EndofEpoch(t) => {
-                        if self.fd.is_none() {
+                    Message::EndofEpoch(t) => {},
+
+                    Message::Sfrbx(sfrbx) => {
+                        eph_buffer.latch_rxm_sfrbx(sfrbx);
+
+                        if !self.header_released && self.may_release_header() {
                             self.release_header();
+                            self.header_released = true;
+                        }
+
+                        if !self.header_released {
+                            continue;
                         }
 
                         let fd = self.fd.as_mut().unwrap();
+                        let header = self.header.as_ref().unwrap();
 
-                        match self.record.format(fd, &self.header) {
-                            Ok(_) => {
-                                info!("{} - released new epoch", t);
-                            },
-                            Err(e) => {
-                                error!("{} - RINEX formatting error: {}", t, e);
-                            },
-                        }
-                    },
+                        // for eph in eph_buffer.iter().filter(|eph| eph.is_ready()) {
+                        //     if let Some(toc) = eph_buffer.toc() {
 
-                    Message::FirmwareVersion(version) => {
-                        self.ubx_settings.firmware = Some(version.to_string());
-                    },
+                        // if let Some(latest_toc) = self.latest_toc.get_mut(&eph.sv) {
+                        //     if toc - latest_toc >= Duration::from_hours(2.0) {
+                        //         let rinex = eph.to_rinex();
 
-                    Message::Ephemeris((t, sv, eph)) => {
-                        let key = NavKey {
-                            epoch: t,
-                            sv,
-                            msgtype: NavMessageType::LNAV,
-                            frmtype: NavFrameType::Ephemeris,
-                        };
+                        //         match rinex.format(fd, header) {
+                        //             Ok(_) => {
+                        //                 info!("{} - released NAV content", latest_t);
+                        //             },
+                        //             Err(e) => {
+                        //                 error!("{} - failed to release NAV content: {}", latest_t, e);
+                        //             },
+                        //         }
 
-                        let frame = NavFrame::EPH(eph);
-
-                        let rec = self
-                            .record
-                            .as_mut_nav()
-                            .expect("internal error: invalid nav setup");
-
-                        rec.insert(key, frame);
-                    },
-
-                    Message::Shutdown => {
-                        return;
+                        //         *latest_toc = toc;
+                        //     }
+                        // }
+                        //     }
+                        // }
                     },
 
                     _ => {},
@@ -124,18 +123,31 @@ impl Collecter {
         }
     }
 
+    fn may_release_header(&self) -> bool {
+        self.first_t.is_some()
+    }
+
     fn release_header(&mut self) {
-        // obtain a file descriptor
-        let mut fd = BufWriter::new(self.fd());
 
-        self.header.format(&mut fd).unwrap_or_else(|e| {
-            panic!(
-                "RINEX header formatting: {}. Aborting (avoiding corrupt file)",
-                e
-            )
-        });
+        // let version = Version::new(shared_opts.major, 0);
 
-        let _ = fd.flush();
-        self.fd = Some(fd);
+        // let mut header = Header::basic_nav().with_version(version);
+
+        // if let Some(agency) = &shared_opts.agency {
+        //     header.agency = Some(agency.to_string());
+        // }
+
+        // // obtain a file descriptor
+        // let mut fd = BufWriter::new(self.fd());
+
+        // self.header.format(&mut fd).unwrap_or_else(|e| {
+        //     panic!(
+        //         "RINEX header formatting: {}. Aborting (avoiding corrupt file)",
+        //         e
+        //     );
+        // });
+
+        // let _ = fd.flush();
+        // self.fd = Some(fd);
     }
 }

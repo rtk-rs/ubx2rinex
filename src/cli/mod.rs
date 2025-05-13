@@ -4,9 +4,13 @@ use rinex::prelude::{Constellation, Duration, Observable, TimeScale};
 mod observations;
 use observations::*;
 
+mod navigation;
+use navigation::*;
+
 use crate::{
     collecter::{
-        observations::settings::Settings as ObsSettings, settings::Settings as SharedSettings,
+        brdc::settings::Settings as NavSettings, observations::settings::Settings as ObsSettings,
+        settings::Settings as SharedSettings,
     },
     UbloxSettings,
 };
@@ -200,11 +204,20 @@ Requires country code and other definitions to be complete.")
                 .help("Add GZIP compression.")
         )
         .arg(
-            Arg::new("snapshot-period")
-                .long("period")
-                .action(ArgAction::Set)
+            Arg::new("hourly")
+                .long("hourly")
+                .action(ArgAction::SetTrue)
                 .required(false)
-                .help("RINEX collection period. Default is hourly.")
+                .conflicts_with("half-day")
+                .help("Hourly snapshot (one file release every hour). Default is 24 hours (daily).")
+        )
+        .arg(
+            Arg::new("half-day")
+                .long("half-day")
+                .action(ArgAction::SetTrue)
+                .required(false)
+                .conflicts_with("hourly")
+                .help("2x Daily snapshot (one file release every 12 hours). Default is 24 hours (daily).")
         )
         .arg(
             Arg::new("nav")
@@ -227,6 +240,10 @@ Use this if you intend to collect Ephemeris only."),
         let cmd = cmd
             .next_help_heading("Observations RINEX (specific)")
             .args(OBSERVATION_ARGS.iter());
+
+        let cmd = cmd
+            .next_help_heading("NAV RINEX (specific)")
+            .args(NAVIGATION_ARGS.iter());
 
         Self {
             matches: cmd.get_matches(),
@@ -485,12 +502,12 @@ Use this if you intend to collect Ephemeris only."),
             name: if let Some(name) = self.matches.get_one::<String>("name") {
                 name.to_string()
             } else {
-                "UBXR".to_string()
+                "UBX".to_string()
             },
             country_code: if let Some(country) = self.matches.get_one::<String>("country") {
                 country.to_string()
             } else {
-                "FRA".to_string()
+                "XXX".to_string()
             },
             gzip: self.matches.get_flag("gzip"),
             long_filename: self.matches.get_flag("long"),
@@ -501,19 +518,15 @@ Use this if you intend to collect Ephemeris only."),
             } else {
                 3
             },
-            snapshot_period: if let Some(period) = self.matches.get_one::<String>("snapshot-period")
-            {
-                let dt = period
-                    .trim()
-                    .parse::<Duration>()
-                    .unwrap_or_else(|e| panic!("Invalid duration: {}", e));
-
-                dt
-            } else {
+            snapshot_period: if self.matches.get_flag("hourly") {
                 Duration::from_hours(1.0)
+            } else if self.matches.get_flag("half-day") {
+                Duration::from_hours(12.0)
+            } else {
+                Duration::from_hours(24.0)
             },
-            no_obs: self.matches.get_flag("no-obs"),
             nav: self.matches.get_flag("nav"),
+            no_obs: self.matches.get_flag("no-obs"),
         }
     }
 
@@ -523,5 +536,9 @@ Use this if you intend to collect Ephemeris only."),
             observables: self.observables(),
             crinex: self.matches.get_flag("crx"),
         }
+    }
+
+    pub fn nav_settings(&self) -> NavSettings {
+        NavSettings {}
     }
 }
