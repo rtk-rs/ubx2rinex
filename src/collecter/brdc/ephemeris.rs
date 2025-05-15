@@ -1,26 +1,23 @@
-use rinex::{
-    navigation::Ephemeris,
-    prelude::{Constellation, Epoch, SV},
-};
+use rinex::prelude::{Epoch, SV};
 
 use ublox_lib::{
-    GpsEphFrame1, GpsEphFrame2, GpsEphFrame3, GpsFrame, GpsHowWord, GpsSubframe, GpsTelemetryWord,
-    RxmSfrbxInterpreted,
+    RxmSfrbxGpsQzssFrame, RxmSfrbxGpsQzssFrame1, RxmSfrbxGpsQzssFrame2, RxmSfrbxGpsQzssFrame3,
+    RxmSfrbxGpsQzssHow, RxmSfrbxGpsQzssSubframe, RxmSfrbxGpsQzssTelemetry, RxmSfrbxInterpreted,
 };
 
 use super::sfrbx::Sfrbx;
 
-pub struct GpsEphMessages {
+pub struct GpsQzssMessages {
     sv: SV,
-    how: GpsHowWord,
-    tlm: GpsTelemetryWord,
-    frame1: Option<GpsEphFrame1>,
-    frame2: Option<GpsEphFrame2>,
-    frame3: Option<GpsEphFrame3>,
+    how: RxmSfrbxGpsQzssHow,
+    tlm: RxmSfrbxGpsQzssTelemetry,
+    frame1: Option<RxmSfrbxGpsQzssFrame1>,
+    frame2: Option<RxmSfrbxGpsQzssFrame2>,
+    frame3: Option<RxmSfrbxGpsQzssFrame3>,
 }
 
-impl GpsEphMessages {
-    pub fn is_ready(&self) -> bool {
+impl GpsQzssMessages {
+    pub fn is_complete(&self) -> bool {
         if let Some(frame1) = self.frame1.as_ref() {
             if let Some(frame2) = self.frame2.as_ref() {
                 if let Some(frame3) = self.frame3.as_ref() {
@@ -36,38 +33,38 @@ impl GpsEphMessages {
         false
     }
 
-    pub fn from_gps_frame(sv: SV, gps: GpsFrame) -> Self {
+    pub fn from_gps_qzss_frame(sv: SV, frame: RxmSfrbxGpsQzssFrame) -> Self {
         Self {
             sv,
-            how: gps.how,
-            tlm: gps.telemetry,
-            frame1: match &gps.subframe {
-                GpsSubframe::Eph1(frame1) => Some(frame1.clone()),
+            how: frame.how,
+            tlm: frame.telemetry,
+            frame1: match &frame.subframe {
+                RxmSfrbxGpsQzssSubframe::Eph1(frame1) => Some(frame1.clone()),
                 _ => None,
             },
-            frame2: match &gps.subframe {
-                GpsSubframe::Eph2(frame2) => Some(frame2.clone()),
+            frame2: match &frame.subframe {
+                RxmSfrbxGpsQzssSubframe::Eph2(frame2) => Some(frame2.clone()),
                 _ => None,
             },
-            frame3: match &gps.subframe {
-                GpsSubframe::Eph3(frame3) => Some(frame3.clone()),
+            frame3: match &frame.subframe {
+                RxmSfrbxGpsQzssSubframe::Eph3(frame3) => Some(frame3.clone()),
                 _ => None,
             },
         }
     }
 
-    pub fn latch_gps_frame(&mut self, gps: GpsFrame) {
-        self.how = gps.how;
-        self.tlm = gps.telemetry;
+    pub fn latch_gps_qzss_frame(&mut self, frame: RxmSfrbxGpsQzssFrame) {
+        self.how = frame.how;
+        self.tlm = frame.telemetry;
 
-        match gps.subframe {
-            GpsSubframe::Eph1(frame1) => {
+        match frame.subframe {
+            RxmSfrbxGpsQzssSubframe::Eph1(frame1) => {
                 self.frame1 = Some(frame1);
             },
-            GpsSubframe::Eph2(frame2) => {
+            RxmSfrbxGpsQzssSubframe::Eph2(frame2) => {
                 self.frame2 = Some(frame2);
             },
-            GpsSubframe::Eph3(frame3) => {
+            RxmSfrbxGpsQzssSubframe::Eph3(frame3) => {
                 self.frame3 = Some(frame3);
             },
         }
@@ -79,28 +76,28 @@ impl GpsEphMessages {
 }
 
 pub enum EphMessages {
-    GPS(GpsEphMessages),
+    GpsQzss(GpsQzssMessages),
 }
 
 impl EphMessages {
     pub fn from_sfrbx(sfrbx: Sfrbx) -> Self {
         match sfrbx.interpreted {
-            RxmSfrbxInterpreted::GPS(gps) => {
-                Self::GPS(GpsEphMessages::from_gps_frame(sfrbx.sv, gps))
+            RxmSfrbxInterpreted::GpsQzss(gps) => {
+                Self::GpsQzss(GpsQzssMessages::from_gps_qzss_frame(sfrbx.sv, gps))
             },
         }
     }
 
-    pub fn is_ready(&self) -> bool {
+    pub fn is_complete(&self) -> bool {
         match self {
-            Self::GPS(gps) => gps.is_ready(),
+            Self::GpsQzss(frame) => frame.is_complete(),
             _ => false,
         }
     }
 }
 
 pub struct EphBuffer {
-    pub buffer: Vec<GpsEphMessages>,
+    pub buffer: Vec<GpsQzssMessages>,
 }
 
 impl EphBuffer {
@@ -112,11 +109,11 @@ impl EphBuffer {
 
     pub fn latch_rxm_sfrbx(&mut self, sfrbx: Sfrbx) {
         match sfrbx.interpreted {
-            RxmSfrbxInterpreted::GPS(gps_frame) => {
+            RxmSfrbxInterpreted::GpsQzss(gps_qzss_frame) => {
                 if let Some(data) = self.buffer.iter_mut().find(|k| k.sv == sfrbx.sv) {
-                    data.latch_gps_frame(gps_frame);
+                    data.latch_gps_qzss_frame(gps_qzss_frame);
                 } else {
-                    let msg = GpsEphMessages::from_gps_frame(sfrbx.sv, gps_frame);
+                    let msg = GpsQzssMessages::from_gps_qzss_frame(sfrbx.sv, gps_qzss_frame);
                     self.buffer.push(msg);
                 }
             },
@@ -124,6 +121,6 @@ impl EphBuffer {
     }
 
     pub fn has_pending_content(&self) -> bool {
-        self.buffer.iter().filter(|k| k.is_ready()).count() > 0
+        self.buffer.iter().filter(|k| k.is_complete()).count() > 0
     }
 }

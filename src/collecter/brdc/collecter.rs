@@ -1,6 +1,6 @@
 use std::io::{BufWriter, Write};
 
-use rinex::prelude::{Epoch, Header, Version};
+use rinex::prelude::{Constellation, Epoch, Header, Version};
 
 use log::error;
 
@@ -13,7 +13,6 @@ use crate::collecter::{
     settings::Settings as SharedSettings,
     Message,
 };
-
 pub struct Collecter {
     rx: Receiver<Message>,
     deploy_time: Epoch,
@@ -21,6 +20,7 @@ pub struct Collecter {
     opts: Settings,
     shared_opts: SharedSettings,
     header_released: bool,
+    constellations: Vec<Constellation>,
     fd: Option<BufWriter<FileDescriptor>>,
 }
 
@@ -36,16 +36,19 @@ impl Collecter {
             rx,
             fd: None,
             first_t: None,
-            header_released: false,
-            deploy_time: rtm.deploy_time,
             opts,
             shared_opts,
+            header_released: false,
+            deploy_time: rtm.deploy_time,
+            constellations: Default::default(),
         }
     }
 
     /// Obtain a new file descriptor
     fn fd(&self, t: Epoch) -> FileDescriptor {
-        let filename = self.opts.filename(t, &self.shared_opts);
+        let filename = self
+            .opts
+            .filename(t, &self.constellations, &self.shared_opts);
         FileDescriptor::new(self.shared_opts.gzip, &filename)
     }
 
@@ -64,6 +67,10 @@ impl Collecter {
                 Ok(msg) => match msg {
                     Message::EndofEpoch(t) => {},
 
+                    Message::Constellations(constellations) => {
+                        self.constellations = constellations.clone();
+                    },
+
                     Message::Sfrbx(sfrbx) => {
                         eph_buffer.latch_rxm_sfrbx(sfrbx);
 
@@ -78,7 +85,7 @@ impl Collecter {
 
                         let fd = self.fd.as_mut().unwrap();
 
-                        for eph in eph_buffer.buffer.iter().filter(|eph| eph.is_ready()) {
+                        for eph in eph_buffer.buffer.iter().filter(|eph| eph.is_complete()) {
                             //     if let Some(toc) = eph_buffer.toc() {
 
                             // if let Some(latest_toc) = self.latest_toc.get_mut(&eph.sv) {

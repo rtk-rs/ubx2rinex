@@ -5,7 +5,10 @@ use hifitime::{
     prelude::{Duration, Epoch, Formatter},
 };
 
-use rinex::production::{FFU, PPU};
+use rinex::{
+    prelude::Constellation,
+    production::{FFU, PPU},
+};
 
 use crate::collecter::Settings as SharedSettings;
 
@@ -13,7 +16,12 @@ use crate::collecter::Settings as SharedSettings;
 pub struct Settings {}
 
 impl Settings {
-    pub fn filename(&self, t: Epoch, shared_opts: &SharedSettings) -> String {
+    pub fn filename(
+        &self,
+        t: Epoch,
+        constellations: &[Constellation],
+        shared_opts: &SharedSettings,
+    ) -> String {
         let mut filepath = if let Some(prefix) = &shared_opts.prefix {
             format!("{}/", prefix)
         } else {
@@ -21,7 +29,7 @@ impl Settings {
         };
 
         let filename = if shared_opts.long_filename {
-            self.v3_filename(t, shared_opts)
+            self.v3_filename(t, constellations, shared_opts)
         } else {
             self.v2_filename(t, shared_opts)
         };
@@ -51,7 +59,12 @@ impl Settings {
         formatted
     }
 
-    fn v3_filename(&self, t: Epoch, shared_opts: &SharedSettings) -> String {
+    fn v3_filename(
+        &self,
+        t: Epoch,
+        constellations: &[Constellation],
+        shared_opts: &SharedSettings,
+    ) -> String {
         let ppu: PPU = shared_opts.snapshot_period.into();
         let ffu: FFU = Duration::from_seconds(30.0).into();
 
@@ -67,7 +80,29 @@ impl Settings {
         formatted.push('_');
 
         formatted.push_str(&ffu.to_string());
-        formatted.push_str("_MN.rnx");
+        formatted.push('_');
+
+        if constellations.len() == 1 {
+            match constellations[0] {
+                Constellation::GPS => {
+                    formatted.push('G');
+                },
+                Constellation::Glonass => {
+                    formatted.push('R');
+                },
+                Constellation::Galileo => {
+                    formatted.push('E');
+                },
+                Constellation::BeiDou => {
+                    formatted.push('C');
+                },
+                _ => formatted.push('M'),
+            }
+        } else {
+            formatted.push('M');
+        }
+
+        formatted.push_str("N.rnx");
 
         if shared_opts.gzip {
             formatted.push_str(".gz");
@@ -83,6 +118,8 @@ mod test {
     use crate::collecter::{
         brdc::settings::Settings as NavSettings, settings::Settings as SharedSettings,
     };
+
+    use rinex::prelude::Constellation;
 
     use hifitime::prelude::{Duration, Epoch};
     use std::str::FromStr;
@@ -107,10 +144,10 @@ mod test {
 
         let t0 = Epoch::from_str("2020-01-01T00:00:00 UTC").unwrap();
 
-        assert_eq!(settings.v2_filename(t0, &shared), "UBX001.20O");
+        assert_eq!(settings.v2_filename(t0, &shared), "UBX001.20N");
 
         shared.gzip = true;
-        assert_eq!(settings.v2_filename(t0, &shared), "UBX001.20D.gz");
+        assert_eq!(settings.v2_filename(t0, &shared), "UBX001.20N.gz");
     }
 
     #[test]
@@ -134,20 +171,20 @@ mod test {
         let t0 = Epoch::from_str("2020-01-01T00:00:00 UTC").unwrap();
 
         assert_eq!(
-            settings.v3_filename(t0, &shared),
-            "UBXFRA_R_20200010000_01D_30S_MO.rnx"
+            settings.v3_filename(t0, &[Constellation::GPS, Constellation::Galileo], &shared),
+            "UBXFRA_R_20200010000_01D_MN.rnx"
         );
 
         assert_eq!(
-            settings.v3_filename(t0, &shared),
-            "UBXFRA_R_20200010000_01D_30S_MO.crx"
+            settings.v3_filename(t0, &[Constellation::GPS], &shared),
+            "UBXFRA_R_20200010000_01D_GN.rnx"
         );
 
         shared.gzip = true;
 
         assert_eq!(
-            settings.v3_filename(t0, &shared),
-            "UBXFRA_R_20200010000_01D_30S_MO.crx.gz"
+            settings.v3_filename(t0, &[Constellation::GPS], &shared),
+            "UBXFRA_R_20200010000_01D_GN.rnx.gz"
         );
     }
 }

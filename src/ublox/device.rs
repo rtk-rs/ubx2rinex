@@ -51,7 +51,7 @@ impl Device {
 
         self.enable_nav_pvt(buf);
         self.enable_nav_dop(buf);
-        self.enable_nav_sat(buf);
+        // self.enable_nav_sat(buf);
         self.enable_nav_eoe(buf);
 
         self.enable_obs_rinex(!rinex_settings.no_obs, buf);
@@ -266,6 +266,8 @@ impl Device {
         if enabled {
             debug!("UBX-RXM-RAWX");
 
+            // By setting 1 in the array below, we enable the NavPvt message for Uart1, Uart2 and USB
+            // The other positions are for I2C, SPI, etc. Consult your device manual.
             self.write_all(
                 &CfgMsgAllPortsBuilder::set_rate_for::<RxmRawx>([1, 1, 1, 1, 1, 1])
                     .into_packet_bytes(),
@@ -287,6 +289,8 @@ impl Device {
         if enabled {
             debug!("UBX-RXM-SFRBX");
 
+            // By setting 1 in the array below, we enable the NavPvt message for Uart1, Uart2 and USB
+            // The other positions are for I2C, SPI, etc. Consult your device manual.
             self.write_all(
                 &CfgMsgAllPortsBuilder::set_rate_for::<RxmSfrbx>([1, 1, 1, 1, 1, 1])
                     .into_packet_bytes(),
@@ -305,9 +309,6 @@ impl Device {
     }
 
     fn enable_nav_eoe(&mut self, buffer: &mut [u8]) {
-        // By setting 1 in the array below, we enable the NavPvt message for Uart1, Uart2 and USB
-        // The other positions are for I2C, SPI, etc. Consult your device manual.
-
         self.write_all(
             &CfgMsgAllPortsBuilder::set_rate_for::<NavEoe>([1, 1, 1, 1, 1, 1]).into_packet_bytes(),
         )
@@ -320,6 +321,8 @@ impl Device {
     }
 
     fn enable_nav_clock(&mut self, buffer: &mut [u8]) {
+        // By setting 1 in the array below, we enable the NavPvt message for Uart1, Uart2 and USB
+        // The other positions are for I2C, SPI, etc. Consult your device manual.
         self.write_all(
             &CfgMsgAllPortsBuilder::set_rate_for::<NavClock>([1, 1, 1, 1, 1, 1])
                 .into_packet_bytes(),
@@ -333,7 +336,6 @@ impl Device {
     fn enable_nav_sat(&mut self, buffer: &mut [u8]) {
         // By setting 1 in the array below, we enable the NavPvt message for Uart1, Uart2 and USB
         // The other positions are for I2C, SPI, etc. Consult your device manual.
-
         self.write_all(
             &CfgMsgAllPortsBuilder::set_rate_for::<NavSat>([1, 1, 1, 1, 1, 1]).into_packet_bytes(),
         )
@@ -348,7 +350,6 @@ impl Device {
     fn enable_nav_pvt(&mut self, buffer: &mut [u8]) {
         // By setting 1 in the array below, we enable the NavPvt message for Uart1, Uart2 and USB
         // The other positions are for I2C, SPI, etc. Consult your device manual.
-
         self.write_all(
             &CfgMsgAllPortsBuilder::set_rate_for::<NavPvt>([1, 1, 1, 1, 1, 1]).into_packet_bytes(),
         )
@@ -363,7 +364,6 @@ impl Device {
     fn enable_nav_dop(&mut self, buffer: &mut [u8]) {
         // By setting 1 in the array below, we enable the NavPvt message for Uart1, Uart2 and USB
         // The other positions are for I2C, SPI, etc. Consult your device manual.
-
         self.write_all(
             &CfgMsgAllPortsBuilder::set_rate_for::<NavDop>([1, 1, 1, 1, 1, 1]).into_packet_bytes(),
         )

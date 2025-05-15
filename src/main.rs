@@ -192,28 +192,6 @@ pub async fn main() {
                     }
                 },
 
-                PacketRef::NavSat(pkt) => {
-                    for sv in pkt.svs() {
-                        let constellation = to_constellation(sv.gnss_id());
-
-                        if constellation.is_none() {
-                            continue;
-                        }
-
-                        let constellation = constellation.unwrap();
-
-                        let _elev = sv.elev();
-                        let _azim = sv.azim();
-                        let _pr_res = sv.pr_res();
-                        let _flags = sv.flags();
-
-                        let _sv = SV {
-                            constellation,
-                            prn: sv.sv_id(),
-                        };
-                    }
-                },
-
                 PacketRef::NavStatus(pkt) => {
                     pkt.itow();
                     //itow = pkt.itow();
