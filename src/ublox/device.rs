@@ -52,7 +52,6 @@ impl Device {
         self.enable_nav_pvt(buf);
         self.enable_nav_dop(buf);
         // self.enable_nav_sat(buf);
-        self.enable_nav_eoe(buf);
 
         self.enable_obs_rinex(!rinex_settings.no_obs, buf);
 
@@ -306,18 +305,6 @@ impl Device {
 
         self.wait_for_ack::<CfgMsgAllPorts>(buffer)
             .unwrap_or_else(|e| panic!("UBX-RXM-SFRBX error: {}", e));
-    }
-
-    fn enable_nav_eoe(&mut self, buffer: &mut [u8]) {
-        self.write_all(
-            &CfgMsgAllPortsBuilder::set_rate_for::<NavEoe>([1, 1, 1, 1, 1, 1]).into_packet_bytes(),
-        )
-        .unwrap_or_else(|e| panic!("UBX-NAV-EOE error: {}", e));
-
-        self.wait_for_ack::<CfgMsgAllPorts>(buffer)
-            .unwrap_or_else(|e| panic!("UBX-RXM-EOE error: {}", e));
-
-        debug!("UBX-NAV-EOE enabled");
     }
 
     fn enable_nav_clock(&mut self, buffer: &mut [u8]) {

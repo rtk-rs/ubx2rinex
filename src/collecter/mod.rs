@@ -27,9 +27,6 @@ pub enum Message {
     /// [Message::Shutdown] catches Ctrl+C interruptions
     Shutdown,
 
-    /// [Message::EndofEpoch] notification
-    EndofEpoch(Epoch),
-
     /// Constellations
     Constellations(Vec<Constellation>),
 
@@ -41,9 +38,6 @@ pub enum Message {
 
     /// [Sfrbx]
     Sfrbx(Sfrbx),
-
-    /// Ephemeris publication
-    Ephemeris((Epoch, SV, Ephemeris)),
 }
 
 pub struct Collector {

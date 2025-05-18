@@ -1,4 +1,9 @@
-use rinex::prelude::{Epoch, SV};
+use std::f64::consts::PI;
+
+use rinex::{
+    navigation::{Ephemeris, Kepler, NavFrame, NavFrameType, Perturbations},
+    prelude::{Epoch, SV},
+};
 
 use ublox_lib::{
     RxmSfrbxGpsQzssFrame, RxmSfrbxGpsQzssFrame1, RxmSfrbxGpsQzssFrame2, RxmSfrbxGpsQzssFrame3,
@@ -8,7 +13,7 @@ use ublox_lib::{
 use super::sfrbx::Sfrbx;
 
 pub struct GpsQzssMessages {
-    sv: SV,
+    pub sv: SV,
     how: RxmSfrbxGpsQzssHow,
     tlm: RxmSfrbxGpsQzssTelemetry,
     frame1: Option<RxmSfrbxGpsQzssFrame1>,
@@ -31,6 +36,48 @@ impl GpsQzssMessages {
         }
 
         false
+    }
+
+    pub fn to_rinex(&self) -> Option<Ephemeris> {
+        let (frame1, frame2, frame3) = (
+            self.frame1.as_ref()?,
+            self.frame2.as_ref()?,
+            self.frame3.as_ref()?,
+        );
+
+        let mut ephemeris = Ephemeris::default();
+
+        ephemeris.clock_bias = frame1.af0_s;
+        ephemeris.clock_drift = frame1.af1_s_s;
+        ephemeris.clock_drift_rate = frame1.af2_s_s2;
+
+        let keplerian = Kepler {
+            a: frame2.sqrt_a.powi(2),
+            e: frame2.e,
+            i_0: frame3.i0 * PI,
+            omega_0: frame3.omega0 * PI,
+            m_0: frame2.m0 * PI,
+            omega: frame3.omega * PI,
+            toe: frame2.toe_s as f64,
+        };
+
+        let perturbations = Perturbations {
+            cus: frame2.cus,
+            cuc: frame2.cuc,
+            cis: frame3.cis,
+            cic: frame3.cis,
+            crs: frame2.crs,
+            crc: frame3.crc,
+            dn: frame2.dn * PI,
+            i_dot: frame3.idot * PI,
+            omega_dot: frame3.omega_dot * PI,
+        };
+
+        Some(
+            ephemeris
+                .with_kepler(keplerian)
+                .with_perturbations(perturbations),
+        )
     }
 
     pub fn from_gps_qzss_frame(sv: SV, frame: RxmSfrbxGpsQzssFrame) -> Self {
@@ -118,9 +165,5 @@ impl EphBuffer {
                 }
             },
         }
-    }
-
-    pub fn has_pending_content(&self) -> bool {
-        self.buffer.iter().filter(|k| k.is_complete()).count() > 0
     }
 }

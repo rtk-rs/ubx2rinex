@@ -13,7 +13,17 @@ use rinex::{
 use crate::collecter::Settings as SharedSettings;
 
 #[derive(Debug, Clone)]
-pub struct Settings {}
+pub struct Settings {
+    pub frame_period: Duration,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            frame_period: Duration::from_hours(2.0),
+        }
+    }
+}
 
 impl Settings {
     pub fn filename(
@@ -140,7 +150,7 @@ mod test {
             snapshot_period: Duration::from_days(1.0),
         };
 
-        let settings = NavSettings {};
+        let settings = NavSettings::default();
 
         let t0 = Epoch::from_str("2020-01-01T00:00:00 UTC").unwrap();
 
@@ -166,7 +176,7 @@ mod test {
             snapshot_period: Duration::from_days(1.0),
         };
 
-        let settings = NavSettings {};
+        let settings = NavSettings::default();
 
         let t0 = Epoch::from_str("2020-01-01T00:00:00 UTC").unwrap();
 

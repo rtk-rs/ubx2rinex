@@ -238,7 +238,7 @@ pub async fn main() {
                     if let Some(constellation) = to_constellation(sfrbx.gnss_id()) {
                         let sv = SV::new(constellation, sfrbx.sv_id());
 
-                        if let Some(interpreted) = sfrbx.interprete() {
+                        if let Some(interpreted) = sfrbx.interpret() {
                             let sfrbx = Sfrbx { sv, interpreted };
 
                             match tx.send(Message::Sfrbx(sfrbx)) {

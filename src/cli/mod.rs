@@ -535,6 +535,8 @@ Use this if you intend to collect Ephemeris only."),
     }
 
     pub fn nav_settings(&self) -> NavSettings {
-        NavSettings {}
+        NavSettings {
+            frame_period: Duration::from_hours(2.0),
+        }
     }
 }
