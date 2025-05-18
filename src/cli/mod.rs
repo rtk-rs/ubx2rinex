@@ -1,5 +1,5 @@
 use clap::{Arg, ArgAction, ArgMatches, ColorChoice, Command};
-use rinex::prelude::{Constellation, Duration, Observable, TimeScale};
+use rinex::prelude::{Constellation, Duration, TimeScale};
 
 mod observations;
 use observations::*;
@@ -15,7 +15,7 @@ use crate::{
     UbloxSettings,
 };
 
-use std::{collections::HashMap, str::FromStr};
+use std::str::FromStr;
 
 pub struct Cli {
     /// Arguments passed by user
@@ -324,98 +324,98 @@ Use this if you intend to collect Ephemeris only."),
         self.matches.get_flag("all-meas") || self.matches.get_flag("cp")
     }
 
-    fn observables(&self) -> HashMap<Constellation, Vec<Observable>> {
-        let v2 = self.matches.get_flag("v2");
+    // fn observables(&self) -> HashMap<Constellation, Vec<Observable>> {
+    //     let v2 = self.matches.get_flag("v2");
 
-        let mut ret = HashMap::<Constellation, Vec<Observable>>::new();
+    //     let mut ret = HashMap::<Constellation, Vec<Observable>>::new();
 
-        for constell in self.constellations().iter() {
-            let mut observables = Vec::new();
+    //     for constell in self.constellations().iter() {
+    //         let mut observables = Vec::new();
 
-            if self.l1() {
-                if self.doppler() {
-                    if v2 {
-                        observables.push("D1");
-                    } else {
-                        observables.push("D1C");
-                    }
-                }
-                if self.cp() {
-                    if v2 {
-                        observables.push("L1");
-                    } else {
-                        observables.push("L1C");
-                    }
-                }
-                if self.pr() {
-                    if v2 {
-                        observables.push("C1");
-                    } else {
-                        observables.push("C1C");
-                    }
-                }
-            }
+    //         if self.l1() {
+    //             if self.doppler() {
+    //                 if v2 {
+    //                     observables.push("D1");
+    //                 } else {
+    //                     observables.push("D1C");
+    //                 }
+    //             }
+    //             if self.cp() {
+    //                 if v2 {
+    //                     observables.push("L1");
+    //                 } else {
+    //                     observables.push("L1C");
+    //                 }
+    //             }
+    //             if self.pr() {
+    //                 if v2 {
+    //                     observables.push("C1");
+    //                 } else {
+    //                     observables.push("C1C");
+    //                 }
+    //             }
+    //         }
 
-            if self.l2() {
-                if self.doppler() {
-                    if v2 {
-                        observables.push("D2");
-                    } else {
-                        observables.push("D2C");
-                    }
-                }
-                if self.cp() {
-                    if v2 {
-                        observables.push("L2");
-                    } else {
-                        observables.push("L2C");
-                    }
-                }
-                if self.pr() {
-                    if v2 {
-                        observables.push("C2");
-                    } else {
-                        observables.push("C2C");
-                    }
-                }
-            }
+    //         if self.l2() {
+    //             if self.doppler() {
+    //                 if v2 {
+    //                     observables.push("D2");
+    //                 } else {
+    //                     observables.push("D2C");
+    //                 }
+    //             }
+    //             if self.cp() {
+    //                 if v2 {
+    //                     observables.push("L2");
+    //                 } else {
+    //                     observables.push("L2C");
+    //                 }
+    //             }
+    //             if self.pr() {
+    //                 if v2 {
+    //                     observables.push("C2");
+    //                 } else {
+    //                     observables.push("C2C");
+    //                 }
+    //             }
+    //         }
 
-            if self.l5() {
-                if self.doppler() {
-                    if v2 {
-                        observables.push("D5");
-                    } else {
-                        observables.push("D5C");
-                    }
-                }
-                if self.cp() {
-                    if v2 {
-                        observables.push("L5");
-                    } else {
-                        observables.push("L5C");
-                    }
-                }
-                if self.pr() {
-                    if v2 {
-                        observables.push("C5");
-                    } else {
-                        observables.push("C5C");
-                    }
-                }
-            }
+    //         if self.l5() {
+    //             if self.doppler() {
+    //                 if v2 {
+    //                     observables.push("D5");
+    //                 } else {
+    //                     observables.push("D5C");
+    //                 }
+    //             }
+    //             if self.cp() {
+    //                 if v2 {
+    //                     observables.push("L5");
+    //                 } else {
+    //                     observables.push("L5C");
+    //                 }
+    //             }
+    //             if self.pr() {
+    //                 if v2 {
+    //                     observables.push("C5");
+    //                 } else {
+    //                     observables.push("C5C");
+    //                 }
+    //             }
+    //         }
 
-            for observable in observables.iter() {
-                let observable = Observable::from_str(observable).unwrap();
-                if let Some(observables) = ret.get_mut(constell) {
-                    observables.push(observable);
-                } else {
-                    ret.insert(*constell, vec![observable]);
-                }
-            }
-        }
+    //         for observable in observables.iter() {
+    //             let observable = Observable::from_str(observable).unwrap();
+    //             if let Some(observables) = ret.get_mut(constell) {
+    //                 observables.push(observable);
+    //             } else {
+    //                 ret.insert(*constell, vec![observable]);
+    //             }
+    //         }
+    //     }
 
-        ret
-    }
+    //     ret
+    // }
 
     fn timescale(&self) -> TimeScale {
         if let Some(ts) = self.matches.get_one::<String>("timescale") {
@@ -525,11 +525,10 @@ Use this if you intend to collect Ephemeris only."),
 
     pub fn obs_settings(&self) -> ObsSettings {
         ObsSettings {
-            cp: self.matches.get_flag("cp") || self.matches.get_flag("all-meas"),
-            pr: self.matches.get_flag("pr") || self.matches.get_flag("all-meas"),
-            dop: self.matches.get_flag("dop") || self.matches.get_flag("all-meas"),
+            cp: self.cp(),
+            pr: self.pr(),
+            dop: self.doppler(),
             timescale: self.timescale(),
-            observables: self.observables(),
             crinex: self.matches.get_flag("crx"),
         }
     }

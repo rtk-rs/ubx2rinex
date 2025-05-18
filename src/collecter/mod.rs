@@ -16,10 +16,7 @@ use runtime::Runtime;
 
 use settings::Settings;
 
-use rinex::{
-    navigation::Ephemeris,
-    prelude::{Constellation, Duration, Epoch, SV},
-};
+use rinex::prelude::{Constellation, Duration};
 
 use crossbeam_channel::Receiver;
 
@@ -71,7 +68,6 @@ impl Collector {
             debug!("{} - OBS RINEX collecter deployed", self.rtm.deploy_time);
 
             let mut obs_rinex = Obscollecter::new(
-                &self.rtm,
                 self.obs_settings.clone(),
                 sampling_period,
                 self.shared_settings.clone(),

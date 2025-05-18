@@ -1,7 +1,9 @@
 use std::f64::consts::PI;
 
 use rinex::{
-    navigation::{Ephemeris, Kepler, NavFrame, NavFrameType, Perturbations},
+    navigation::{
+        Ephemeris, Kepler, NavFrame, NavFrameType, NavKey, NavMessageType, Perturbations,
+    },
     prelude::{Epoch, SV},
 };
 
@@ -38,7 +40,7 @@ impl GpsQzssMessages {
         false
     }
 
-    pub fn to_rinex(&self) -> Option<Ephemeris> {
+    pub fn to_rinex_frame(&self, t: Epoch) -> Option<(NavKey, NavFrame)> {
         let (frame1, frame2, frame3) = (
             self.frame1.as_ref()?,
             self.frame2.as_ref()?,
@@ -73,11 +75,21 @@ impl GpsQzssMessages {
             omega_dot: frame3.omega_dot * PI,
         };
 
-        Some(
-            ephemeris
-                .with_kepler(keplerian)
-                .with_perturbations(perturbations),
-        )
+        let (key, frame) = (
+            NavKey {
+                epoch: self.toc(t)?,
+                sv: self.sv,
+                msgtype: NavMessageType::LNAV,
+                frmtype: NavFrameType::Ephemeris,
+            },
+            NavFrame::EPH(
+                ephemeris
+                    .with_kepler(keplerian)
+                    .with_perturbations(perturbations),
+            ),
+        );
+
+        Some((key, frame))
     }
 
     pub fn from_gps_qzss_frame(sv: SV, frame: RxmSfrbxGpsQzssFrame) -> Self {
@@ -118,7 +130,17 @@ impl GpsQzssMessages {
     }
 
     pub fn toc(&self, now: Epoch) -> Option<Epoch> {
-        None
+        let (frame1, frame2, frame3) = (
+            self.frame1.as_ref()?,
+            self.frame2.as_ref()?,
+            self.frame3.as_ref()?,
+        );
+
+        let timescale = self.sv.constellation.timescale()?;
+
+        let toc = self.week_number(now)?;
+
+        Some(Epoch::from_time_of_week(week, toc_nanos, time_scale))
     }
 }
 

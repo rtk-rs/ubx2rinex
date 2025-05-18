@@ -1,26 +1,31 @@
-use std::{collections::HashMap, str::FromStr};
+use std::str::FromStr;
 
 use hifitime::{
     efmt::Format,
     prelude::{Duration, Epoch, Formatter, TimeScale},
 };
 
-use rinex::{
-    prelude::{Constellation, Observable},
-    production::{FFU, PPU},
-};
+use rinex::production::{FFU, PPU};
 
 use crate::collecter::settings::Settings as SharedSettings;
 
 /// Observation RINEX collection [Settings]
 #[derive(Debug, Clone)]
 pub struct Settings {
+    /// True when compressing to CRINEX
     pub crinex: bool,
+
+    /// True when Dopplers are being observed
     pub dop: bool,
+
+    /// True when CP is observed
     pub cp: bool,
+
+    /// True when PR is observed
     pub pr: bool,
+
+    /// [TimeScale]
     pub timescale: TimeScale,
-    pub observables: HashMap<Constellation, Vec<Observable>>,
 }
 impl Settings {
     pub fn filename(&self, t: Epoch, shared_opts: &SharedSettings) -> String {
@@ -120,7 +125,6 @@ mod test {
             cp: false,
             crinex: false,
             timescale: TimeScale::GPST,
-            observables: Default::default(),
         };
 
         let t0 = Epoch::from_str("2020-01-01T00:00:00 UTC").unwrap();
@@ -148,7 +152,6 @@ mod test {
             cp: false,
             crinex: false,
             timescale: TimeScale::GPST,
-            observables: Default::default(),
         };
 
         let t0 = Epoch::from_str("2020-01-01T00:00:00 UTC").unwrap();

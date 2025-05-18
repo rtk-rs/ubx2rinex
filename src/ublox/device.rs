@@ -1,8 +1,8 @@
 use ublox_lib::{
     AlignmentToReferenceTime, CfgMsgAllPorts, CfgMsgAllPortsBuilder, CfgPrtUart, CfgPrtUartBuilder,
     CfgRate, CfgRateBuilder, DataBits, InProtoMask, MonGnss, MonGnssConstellMask, MonVer, NavClock,
-    NavDop, NavEoe, NavPvt, NavSat, OutProtoMask, PacketRef, Parity, Parser, RxmRawx, RxmSfrbx,
-    StopBits, UartMode, UartPortId, UbxPacketMeta, UbxPacketRequest,
+    NavDop, NavPvt, NavSat, OutProtoMask, PacketRef, Parity, Parser, RxmRawx, RxmSfrbx, StopBits,
+    UartMode, UartPortId, UbxPacketMeta, UbxPacketRequest,
 };
 
 use std::io::Write;
@@ -50,8 +50,6 @@ impl Device {
         }
 
         self.enable_nav_pvt(buf);
-        self.enable_nav_dop(buf);
-        // self.enable_nav_sat(buf);
 
         self.enable_obs_rinex(!rinex_settings.no_obs, buf);
 

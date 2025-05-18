@@ -17,14 +17,13 @@ use crossbeam_channel::Receiver;
 use log::{error, info};
 
 use crate::collecter::{
-    fd::FileDescriptor, observations::settings::Settings, runtime::Runtime,
-    settings::Settings as SharedSettings, Message,
+    fd::FileDescriptor, observations::settings::Settings, settings::Settings as SharedSettings,
+    Message,
 };
 
 pub struct Collecter {
     opts: Settings,
     shared_opts: SharedSettings,
-    deploy_time: Epoch,
     sampling_period: Duration,
     latest_t: Option<Epoch>,
     buffer: Observations,
@@ -39,17 +38,13 @@ pub struct Collecter {
 impl Collecter {
     /// Builds new [Collecter]
     pub fn new(
-        rtm: &Runtime,
         opts: Settings,
         sampling_period: Duration,
         shared_opts: SharedSettings,
         rx: Receiver<Message>,
     ) -> Self {
-        let deploy_time = rtm.deploy_time;
-
         Self {
             rx,
-            deploy_time,
             fd: None,
             opts,
             shared_opts,

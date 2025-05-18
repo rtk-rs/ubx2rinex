@@ -1,7 +1,7 @@
 use std::io::{BufWriter, Write};
 
 use rinex::{
-    navigation::{NavFrame, NavFrameType, NavKey, NavMessageType},
+    navigation::{NavFrame, NavKey},
     prelude::{Constellation, Duration, Epoch, Header, Version},
 };
 
@@ -96,15 +96,7 @@ impl Collecter {
                         for eph in eph_buffer.buffer.iter().filter(|eph| eph.is_complete()) {
                             if let Some(toc) = eph.toc(latest_t) {
                                 if toc >= self.next_publication {
-                                    if let Some(rinex) = eph.to_rinex() {
-                                        let key = NavKey {
-                                            epoch: toc,
-                                            sv: eph.sv,
-                                            msgtype: rinex::navigation::NavMessageType::LNAV,
-                                            frmtype: rinex::navigation::NavFrameType::Ephemeris,
-                                        };
-                                        let frame = NavFrame::EPH(rinex);
-                                    }
+                                    if let Some((key, frame)) = eph.to_rinex_frame(latest_t) {}
                                 } else {
                                     let dt = toc - self.next_publication;
                                 }
